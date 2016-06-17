@@ -1,0 +1,2238 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C                                                                C
+C   OPTMAIN.FTN                                                  C
+C
+C     VERSION FOR BILL POWERS --GLUCOSE UTILIZATION
+C     USES WEIGHTED OPT
+C
+C
+C   MODIFIED VERSION OF RPOMAIN.FTN WRITTEN BY MARK MINTUN
+C   FEW CHANGES WERE MADE TO THE FORMAT STATEMENTS AND PRINTOUT
+C   BUT CONTENT WAS  CHANGED
+C
+C
+C   MODIFIED BY:  JOANNE MARKHAM
+C   DATE:         OCTOBER 1989
+C   MODIFIED:  JOANNE MARKHAM  JULY 1991
+C              SHIFT PET TISSUE ACTIVITY INSTEAD OF BLOOD CURVE
+C
+C
+C   MODIFIED BY:  JOANNE MARKHAM
+C   DATE:         OCTOBER 1992
+C                  convert to unix version 
+C                 changes for I/O only required
+C   
+C   MODIFIED BY:  Joanne Markham
+C                 October 1992
+C                 change to DP for computation of function 
+C                  (so that slopei/derivative is more accurate)
+C                   (change convolution output only)
+C
+C   MODIFIED BY:  Joanne Markham  October 1993
+C                 change to FDG model
+C                 change weights for ECAT scanner 
+C                   variance of data depends on total counts/region
+C                    not counts/pixel
+C
+C   THIS IS THE MAIN ROUTINE FOR THE Regional Parameter          C
+C   Estimation PROGRAM.  THIS PROGRAM USES THE MARQUART METHOD OF
+C   PARAMETER ESTIMATION AND ANALYTICAL MODELS DEFINED BY
+C   VARIOUS FUNC SUBROUTINES TO ESTIMATE VALUES FOR THE
+C   UNKNOWN PHYSIOLOGIC PARAMETERS
+C    GIVEN:
+C   (1) THE PET SCAN TISSUE TIME-ACTIVITY DATA,
+C   (2) BLOOD CURVE RESPRESENTING THE INPUT FUNCTION
+C
+C     SUBROUTINES CALLED:
+C      READTIS ------  READ THE TISSUE TIME-ACTIVITY CURVES
+C
+C      BLDI    ------  READS THE BLOOD CURVE AND INTERPOLATES TO
+C                      1 SEC INTERVALS
+C      MARQ    ------  MARQUARDT ITERATIONS
+C      PBLK    ------  READS THE PARAMETER INFORMATION
+C      FUNC    ------  SUBROUTINE WHICH EVALUATES THE VALUE OF
+C                      TISSUE CURVE GIVEN PARAMETER VALUES AND
+C                      INPUT BLOOD CURVE
+C      PARVAR  ------  COMPUTES VARIANCE OF PARAMETER ESTIMATES
+C
+C
+C                                                                C
+C   INITIAL LOGICAL UNIT ASSIGNMENTS ARE SIMPLY:                 C
+C      LU 5  = CONSOLE READ, OR BATCH READ                       C
+C      LU 6  = CONSOLE WRITE, AND ERROR PRINTOUT                 C
+C                                                                C
+C   ALL OTHER LOGICAL UNIT ASSIGNMENTS ARE MADE IN THE PROGRAM,  C
+C   AND ARE AT THE DESCRETION OF THE USER.                       C
+C                                                                C
+C                                                                C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C
+C
+C
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C VARIABLES FOR REGIONAL TISSUE ACTIVITY CURVES
+C
+C
+      INTEGER*4 NPOINT,NREG,TIME1(100),TIME2(100)
+      REAL TEND,TISCURVS(100,100),pixels(100)
+      CHARACTER*80 FNAMET
+      CHARACTER*70 PATID
+      CHARACTER*50 REGID(100)
+C
+C
+C    NPOINTS   -  NUMBER OF TIME POINTS FOR TISSUE DATA
+C    NREG      -  NUMBER OF REGIONS TO BE ANALYSED
+C    TIME1     -  START TIME FOR SCAN DATA   (SECONDS)
+C    TIME2     -  END OF SCAN (SCAN-LEN = TIME2-TIME1)
+C    TEND      -  TIME OF END OF PET STUDY = TIME2(NPOINT)
+C    TISCURVS  -  ACTIVITY VALUES FOR ALL ROI
+C                 TISCURVS(I,J) - ACTIVITY FOR SCAN I AND REGION J
+C    TDECAY    -  HALF-LIFE USED FOR DECAY CORRECTION (SEC)
+C    FNAMET    -  FILE NAME FOR TISSUE DATA
+C    PATID     -  PATIENT/SUBJECT IDENTIFICATION
+C    REGID     -  IDENTIFICATION FOR REGIONS
+C
+C
+C PARAMETERS FOR BLOOD ACTIVITY CURVE
+C
+      INTEGER*4 NBLD,NUMBLD
+      REAL TDEL,TB(8000),BLD(8000),BLDACT(500),BLDTIM(500)
+      CHARACTER*80 FNAMEB
+      REAL BLOODACT(100)
+      COMMON /BLOOD/BLOODACT
+C
+C    NUMBLD    -   NUMBER OF POINTS IN ORIGINAL BLOOD CURVE
+C    BLDTIM    -  TIME VALUES FOR ORIGINAL BLOOD CURVE
+C    BLDACT    -  ACTIVITY VALUES FOR ORIGINAL BLOOD CURVE
+C    TB        -  TIME VALUES FOR INTERPOLATED BLOOD CURVE
+C    BLD       -  BLOOD ACTIVITY VALUES FOR INTERPOLATED CURVE
+C    TDEL      -  TIME INCREMENT FOR INTERPOLATION
+C                 SET TO 1 SEC IN DATA STATEMENT
+C    BLOODACT  -    INTEGRATED BLOOD ACTIVITY IN SCAN INTERVAL
+C
+C PARAMETER BLOCK DATA
+C
+      INTEGER*4 NUMCURV,IOPARM(6),NPARM,NPETPARM(10)
+      REAL PBLOCK(20),PARM(6)
+      CHARACTER*80 FNAMEPB
+      CHARACTER*30 PBNAME(20)
+C
+C
+C    NUMCURV   -  NUMBER OF CURVES (REGIONS)
+C    IOPARM    -  ARRAY OF INDICIES FOR PARAMETERS TO BE ESTIMATED
+C                 INDEX IS LOCATION IN PARAMETER ARRAY
+C    NPARM     -  NUMBER OF VARIABLE PARAMETERS
+C    NPET      -  NUMBER OF FIXED VALUE PARAMETERS WHICH VARY BY
+C                 TISSUE REGION
+C    NPETPARM  -  INDEX OF PARAMETERS WHICH VARY BY REGION
+C    PBLOCK    -  VALUES OF ALL PARAMETERS IN ORDER AS INPUT
+C    PARM      -  VALUES OF VARIABLE PARAMETERS
+C    FNAMEPB   -  FILE NAME FOR PARAMETER BLOCK FILE
+C    PBNAME    -  IDENTIFICATION FOR ALL PARAMETERS
+C
+C
+C PARAMETER ESTIMATION VARIABLES
+C
+      double precision DACT(100) 
+      INTEGER*4 ITERNUM,ICONV
+      REAL TISORIG(100),TISEST(100),TISMISC(100),ERRSUM
+      REAL WEIGHTS(100)
+C
+C    TISORIG   -  DATA FOR TISSUE REGION--TISSUE DATA MOVED TO THIS
+C                 ARRAY AS EACH REGION IS PROCESSED
+C    TISEST    -  ESTIMATED TISSUE CURVE OR FIT
+C    TISMISC   -  NOT USED FOR GLUCOSE MODEL:( FOR SOME PROBLEMS
+C                 USED FOR FIT TO INDIVIDUAL COMPARTMENTS)
+C    WEIGHTS   -  WEIGHTS FOR OPTIMIZATION (WEIGHTED SUM-OF-SQUARES)
+C    ICONV     -  CONVERSION INDICATOR
+C    ITERNUM   -  ITERATION NUMBER (NOT USED?)
+C
+C INPUT/OUTPUT CHARACTER CONSTANTS
+C
+c
+c    for SUN version
+c
+       CHARACTER*24 DATETIME
+c
+c     for HP
+c
+c     CHARACTER*9 DATED,DATIME
+      CHARACTER*10 STARS,SPACE
+      CHARACTER*80 FNAME1,FNAME2,fname3,fname4
+      DATA STARS/'**********'/
+      DATA SPACE/'          '/
+      DATA TDEL/1.0/
+      DATA LUIN, LUOUT/5,6/
+
+******************************************************************
+
+
+C
+C  CALL SUBROUTINE READTIS TO READ REGIONAL TISSUE ACTIVITY CURVES
+C
+C
+
+      CALL READTIS (NPOINT,NREG,TIME1,TIME2,TISCURVS,REGID,
+     1PATID,FNAMET,pixels)
+
+       TEND = TIME2(NPOINT)
+       IF (TEND/TDEL.GT. 8000) THEN
+       WRITE (LUOUT,*) ' MORE THAN 8000 BLOOD CURVE VALUES NEEDED'
+       WRITE (LUOUT,*)' LAST SCAN TIME AND TIME INCREMENT',TEND,TDEL
+       STOP 5
+       ENDIF
+C
+C  CALL BLDI TO OBTAIN BLOOD ACTIVITY CURVE AND INTERPOLATE
+C    TO A CONSTANT SAMPLING DENSITY (TDEL)
+C
+
+       CALL BLDI (NUMBLD,BLDTIM,BLDACT,NBLD,TB,BLD,TDEL,TEND,FNAMEB)
+
+C       WRITE (6,*)' BLOOD CURVE ' ,NBLD
+C       WRITE (6,1515)(TB(I),BLD(I),I=1,20)
+ 1515   FORMAT (2F20.2)
+C
+C
+C  CALL RPOPBLK TO SET UP INITIAL PARAMETER BLOCK INFORMATION
+C
+C
+       NUMCURV=0
+       CALL PBLK (NUMCURV,NPARM,IOPARM,PBLOCK,FNAMEPB,NPET,
+     1            NPETPARM, NREG)
+      WRITE (LUOUT,*) ' RETURN FROM 1ST PBLK CALL'
+C
+C
+******************************************************************
+
+C
+C  comments not correct for unix version 
+c    READ IN PRINT-OUT SELECTION
+C     PRIMARY:    0..........MINIMAL OUTPUT, RESULTS ONLY
+C                 1..........NORMAL OUTPUT, BLOOD CURVE, RESULTS
+C                            WITH IDENTIFYING INFORMATION
+C                 2..........EXPANDED OUTPUT, ABOVE INFO WITH
+C                            ANALYSIS
+C
+C    SECONDARY    0..........NO SECONDARY OUTPUT
+C                 1..........OUTPUT OF ALL FINAL TISSUE ACTIVITY
+C                            CURVES, WITH ORIGINALS
+C                 2..........OUTPUT OF ALL INTERMEDIATE PARAMETER
+C                            ESTIMATIONS, AND FINAL TISSUE ACTIVITY
+C                 3..........OUTPUT OF ALL INFO ABOVE, AND ALSO
+C                            INTERMEDIATE TISSUE ACTIVITY CURVES!
+C
+
+      WRITE(LUOUT,*)' ENTER DESTINATION FOR PRIMARY PRINT-OUT'
+      READ(LUIN,110)FNAME1
+110   FORMAT(A80)
+      OPEN(11,FILE=FNAME1,STATUS='UNKNOWN',ERR=950)
+
+      WRITE(LUOUT,*)' ENTER DESTINATION FOR SECONDARY PRINT-OUT'
+      READ(LUIN,110)FNAME2
+      OPEN(14,FILE=FNAME2,STATUS='UNKNOWN',ERR=955)
+      read (LUIN,110)fname3
+      OPEN (12, file=fname3,status='unknown',err=960)
+      read (luin,110)fname4
+      OPEN (9,file=fname4,status='unknown',err=965)
+      n1print =1
+      n2print = 3
+
+
+**************************************************************
+
+C
+C PRINT-OUT SECTION
+C
+
+      WRITE(11,*)
+      WRITE(11,*)
+      WRITE(11,*)(STARS,I=1,10)
+      WRITE(11,*)(SPACE,I=1,4),'  REGIONAL'
+      WRITE(11,*)(SPACE,I=1,4),'  PARAMETER'
+      WRITE(11,*)(SPACE,I=1,4),'  OPTIMIZATION'
+      WRITE(11,*)(STARS,I=1,10)
+      WRITE(11,*)
+c
+c  SUN version 
+c 
+        CALL FDATE(DATETIME)
+       WRITE(11,510)DATETIME
+510   FORMAT(2X,'R.P.O. RUN ON  ',a24 )
+c
+c
+c   HP version 
+c
+c     CALL DATE (DATED)
+c     CALL TIME (DATIME)
+c     WRITE(11,510)DATED, DATIME
+c510   FORMAT(2X,'R.P.O. RUN ON  ',a9,2x,a9)
+      WRITE(11,*)
+      WRITE(11,*)
+      write (11,*)' ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^'
+      write (11,*)'           FDG-NOFLOW MODEL  --   ECAT SCANNER   '
+      write (11,*)' ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^'
+      write (11,*)
+      WRITE(11,*)'**************** ECHO INPUT DATA *****************'
+      WRITE(11,*)
+      WRITE(11,*)'  NUMBER OF REGIONS READ IN .....',NREG
+      WRITE(11,*)' TISSUE ACTIVITY DATA FILE       ',FNAMET
+      IF(N1PRINT.GE.2)THEN
+      WRITE(11,*)
+      WRITE (11,*)' TISSUE ACTIVITY FILE ',FNAMET
+      WRITE(11,*)'     TIME START',
+     * '  TIME STOP'
+      DO 520 I=1,NPOINT
+520   WRITE(11,*)'           ',TIME1(I),
+     * '  ',TIME2(I)
+      ENDIF
+      WRITE(11,*)' BLOOD ACTIVITY FILE             ',FNAMEB
+       MM = (NBLD-1)*TDEL
+      WRITE(11,*)' NUMBER OF SECONDS BLOOD CURVE OBTAINED: ',MM
+      IF(N1PRINT.GE.2)THEN
+      WRITE(11,*)'  POINT NUMBER          TIME         ACTIVITY',
+     &           '            ACTIVITY (EST)'
+      DO 530 I=1,NUMBLD
+      J=BLDTIM(I) +1
+530   WRITE(11,*)'    ',I,'            ',BLDTIM(I),'         ',
+     &           BLDACT(I),'                  ',BLD(J)
+      ENDIF
+      WRITE(11,*)' PARAMETER BLOCK FILE            ',FNAMEPB
+      WRITE(11,*)'   NUMBER OF PARAMETERS TO BE ESTIMATED:',NPARM
+      WRITE(11,*)'   PARAMETERS NUMBERS...................',
+     * (IOPARM(I),I=1,NPARM)
+      WRITE(11,*)'   NUMBER OF REGION-DEPENDENT PARAMETERS:',NPET
+      IF(NPET.GT.0 .AND. N1PRINT.GE.1)THEN
+      WRITE(11,*)'          PARAMETER NUMBER    '
+      DO 540 I=1,NPET
+540   WRITE(11,*)'          ',NPETPARM(I)
+      ENDIF
+
+
+
+*************************************************************
+
+C
+C  BEGIN ACTUAL PARAMETER ESTIMATION
+C
+
+
+C  CALL PBLK TO SET ALL STARTING PARAMETERS INTO
+C  PARAMETER BLOCK, INCLUDING PET-DERIVED LOCAL PARAMETERS
+
+       NUMCURV = 0
+      DO 600 IREG = 1,NREG
+      NUMCURV=NUMCURV+1
+      CALL PBLK(NUMCURV,NPARM,IOPARM,PBLOCK,
+     *          FNAMEPB,NPET,NPETPARM,NREG)
+      WRITE (LUOUT,*) ' RETURN FROM PBLK CALL'
+
+C  PLACE STARTING VALUES INTO -INITIAL GUESS- ARRAY
+
+      DO 560 I=1,NPARM
+      L=IOPARM(I)
+560   PARM(I)=PBLOCK(L)
+
+C
+C  LOAD TISSUE ACTIVITY CURVE INTO CURRENT WORKING ARRAY
+C
+      DO 570 I=1,100
+570   TISORIG(I)=TISCURVS(I,NUMCURV)
+C
+C  COMPUTE WEIGHTS FOR DATA TISORIG
+C   CONVERT TO ACTIVITY/SEC FIRST
+C     GUESS FOR LOWER ACTIVITY SINCE NO DATA AVAILABLE FOR
+C     LOWER VALUES
+C
+C 
+       pixno = pixels(ireg)
+       temp = pixno*pixno
+        DO 577 I=1,NPOINT
+       XX = TISORIG(I)*pixno
+       var = 1058.4*xx + 0.00085667*xx*xx + 6.67e+4
+        WEIGHTS(I) = temp/var
+ 577    CONTINUE
+C
+C
+
+C
+C  LOAD BLOOD CURVE INTO INTEGRATED BLOODACT ARRAY
+C
+      DO 574 I=1,NPOINT
+      BLOODACT(I)=0.0
+      DO 573 JJ=TIME1(I),TIME2(I)
+573   BLOODACT(I)=BLOODACT(I)+BLD(JJ)
+574   CONTINUE
+      WRITE(12,*)' BLOODACT = ',(BLOODACT(JJ),JJ=1,NPOINT)
+
+************* DEBUG INSTRUCTIONS *****************
+*     WRITE(12,*)' RPOMAIN-READY TO CALL RPOMARQ'
+*     WRITE(12,*)' PBLOCK =',PBLOCK
+*     WRITE(12,*)' PARM = ',PARM
+      WRITE(12,*)' TISORIG = ',(TISORIG(I),I=1,NPOINT)
+**************************************************************
+
+C
+C  CALL MARQUART PARAMETER OPTIMIZER, ANSWERS RETURNED IN
+C  ARRAY -PARM- AND COMPUTER FITTED TISSUE ACTIVITY DATA
+C  RETURNED IN -TISEST-.
+C
+       IF (NPARM.NE.0) THEN
+      CALL MARQ(NBLD,NPOINT,NPBLOCK,NPARM,ERRSUM,ITERNUM,ICONV,
+     *          N2PRINT,TB,BLD,TIME1,TIME2,PBLOCK,IOPARM,PARM,
+     *          TISORIG,TISEST,TISMISC,WEIGHTS,PBNAME)
+       WRITE (LUOUT,*) ' RETURN FROM MARQ '
+
+       ELSE
+       CALL FUNC (NBLD,NPOINT,NPBLOCK,NPARM,PBNAME,N2PRINT,
+     1TB,BLD,TIME1,TIME2,PBLOCK,IOPARM,PARM,dact,TISMISC)
+       do 2003 i = 1,npoint
+2003    tisest(i) =dact(i)
+      ENDIF
+C
+C   COMPUTE SUM-OF-SQUARES >> NOTE THAT THE RMSE IS
+C   NOT MEANINGFUL IS SIMULATION OPTION IS USED BECAUSE
+C   NUMBER OF ESTIMATED PARAMETERS IS UNKNOWN
+C
+         SUMSQ =0.
+         WSUMSQ =0.
+
+         DO 2100 I=1,NPOINT
+         TEMP = TISORIG(I)-TISEST(I)
+         WSUMSQ = WSUMSQ + WEIGHTS(I)*TEMP*TEMP
+ 2100    SUMSQ = SUMSQ + TEMP*TEMP
+         RMSE = SQRT (SUMSQ/(NPOINT-NPARM))
+         RMSEW = SQRT (WSUMSQ/(NPOINT-NPARM))
+C  LOAD ESTIMATED PARAMETERS INTO PARAMETER BLOCK
+
+      DO 580 I=1,NPARM
+      L=IOPARM(I)
+580   PBLOCK(L)=PARM(I)
+
+C
+C
+C  PRINT-OUT OF TISSUE CURVES (ORIG AND ESTIMATED)
+C
+      WRITE(14,*)' -- REGION # ',IREG,' NAME = ',REGID(IREG)
+      WRITE(14,*)'  ',NPOINT,4
+      DO 575 IP=1,NPOINT
+      TT1=TIME1(IP)
+      TT2=TIME2(IP)
+      T1=TT1 + (TT2-TT1)/2.
+      A1=TISORIG(IP)/(TT2-TT1)
+      A2= TISEST(IP)/(TT2-TT1)
+      A3=TISMISC(IP)/(TT2-TT1)
+575   WRITE(14,*)'  ',T1,'  ',A1,'  ',A2,'  ',A3
+
+
+C
+C  REGION-BY-REGION CONDENSED PRINT-OUT
+C
+
+      WRITE(11,*)
+      WRITE(11,*)' DATA SET = ',NUMCURV
+      WRITE(11,*)' -- REGION NUMBER ',IREG,' -- REGION NAME ',
+     * REGID(IREG)
+
+C  CHECK TO SEE IF OPTIMIZER CONVERGED
+
+       IF (NPARM.EQ.0)THEN
+       WRITE (11,1213)
+ 1213  FORMAT (//' >>>>>>>>   SIMULATION ONLY -- NO PARAMETER ES'
+     1' ESTIMATION <<<<<<<'//)
+       ELSE
+      IF(ICONV.NE.0)THEN
+
+C  IF UNABLE TO CONVERGE REPORT TO PRINT-OUT
+
+      WRITE(11,*)' UNABLE TO CONVERGE WITH THIS REGION, ',
+     * ' ICONV VARIABLE = ',ICONV
+
+      ENDIF
+      ENDIF
+
+      WRITE(11,585)(PBLOCK(I),PBNAME(I),I=1,NPBLOCK)
+585   FORMAT(10X,G15.5,3X,A30)
+C
+C    CALL SUBROUTINE PARVAR TO COMPUTE VARIANCE OF PARAMETERS
+C    ESTIMATED -- FOR ESTIMATION OPTION ONLY
+C
+       IF (NPARM.NE.0) THEN
+       CALL PARVAR (NBLD,NPOINT,NPBLOCK,NPARM,PBNAME,N2PRINT,
+     1TB,BLD,TIME1,TIME2,PBLOCK,IOPARM,PARM,TISORIG,TISEST,WEIGHTS,
+     2RMSE)
+        ENDIF
+        WRITE (11,1217)WSUMSQ,RMSEW
+ 1217   FORMAT (/' WEIGHTED SUM-OF-SQUARES & RMSE ',2F20.3)
+         WRITE (11,1212)SUMSQ,RMSE
+ 1212    FORMAT (//' UNWEIGHTED SUM-OF-SQUARES & RMSE ', 2F20.0)
+      IF(NUMCURV.EQ.1)THEN
+      WRITE(9,*)'    ',FNAMET,FNAMEB
+      WRITE(9,*)NREG,20
+      ENDIF
+      WRITE(9,*)(PBLOCK(I),I=1,20)
+
+
+C  END OF LOOP FOR THIS REGION
+
+590   CONTINUE
+
+
+600   CONTINUE
+
+
+      WRITE(11,*)
+      WRITE(11,*)'************* END OF JOB *******************'
+
+      STOP
+
+
+*********************************************************************
+
+C
+C ERROR MESSAGES
+C
+
+950   WRITE(LUOUT,*)
+      WRITE(luout,*)' ...ERROR...UNABLE TO OPEN FILE ',FNAME1
+      GOTO 999
+
+955   WRITE(luout,*)
+      WRITE(luout,*)' ...ERROR...UNABLE TO OPEN FILE ',FNAME2
+      GOTO 999
+960   write (luout,*)
+      write (luout,*)' ... ERROR...UNABLE TO OPEN FILE ',FNAME3
+      GO TO 999
+965   WRITE (LUOUT,*)
+      WRITE (LUOUT,*)' ... ERROR ... UNABLE TO OPEN FILE',FNAME4
+      GO TO 999
+999   continue 
+      STOP
+
+
+      END
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C  Subroutine:  READTIS
+C
+C   Author:     JOANNE MARKHAM
+C   Date:       SEPT 1989
+C   Written For:   OPTMAIN
+C
+C   Intent:   Subroutine to read file containing ROI tissue-activity
+C             curves for optimization program
+C
+C   Variables Passed:
+C             NPOINT     -  number of time points (max 100)
+C             NREG       -  number of regions (max 100)
+C             SCANT0     -  start time of scan (seconds)
+C             SCANEND    -  end of scan (seconds)
+C             TISACT     -  tissue activity
+C             REGID      -  region id (10 characters)
+C             FNAME     -   filename for ROI tissue activity data
+C   Logical Units:
+C                   LUCMD   -   5, .CMD file containing file name
+C                   LUERR   -   6, ERROR MESSAGES
+C                   LU 2    -   assigned to ROI tissue activity file
+C
+C
+C   Uses Subroutines:  None
+C   Called By:         OPTMAIN
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C
+C
+       SUBROUTINE READTIS (NPOINT,NREG,SCANT0,SCANEND,TISACT,
+     1REGID,TITLE,FNAME,pixels)
+        INTEGER*4 NPOINT, NREG, LUCMD, LUERR
+        INTEGER*4 SCANT0(100),SCANEND(100)
+        REAL  TISACT(100,100),pixels(100)
+        REAL  TSTART,TLEN
+        CHARACTER*50 REGID(100)
+        CHARACTER *80 FNAME
+        CHARACTER*70  TITLE
+        DATA LUCMD, LUERR/5, 6/
+C
+C       READ FILENAME FROM .CMD FILE
+C
+        READ (LUCMD,1001)FNAME
+ 1001   FORMAT (A80)
+        OPEN (2,FILE=FNAME,STATUS='OLD',ERR=920)
+
+       READ (2,1002) TITLE
+ 1002  FORMAT (A70)
+       READ (2,*,ERR=930) NPOINT,NREG
+       NREG=NREG -2
+       IF (NREG.GT.100) THEN
+       WRITE (LUERR,*) ' MORE THAN 100 TISSUE VALUES ',NREG
+       STOP 6
+       ENDIF
+       DO 20 I=1,NPOINT
+       READ (2,*,ERR=930) TSTART,TLEN,(TISACT(I,J),J=1,NREG)
+       SCANT0(I)=TSTART
+       SCANEND(I)= TSTART+TLEN
+ 20    CONTINUE
+       DO 40 I=1,NREG
+ 40    READ (2,1003,ERR=930)REGID(I)
+ 1003  FORMAT (A50)
+       do 60 i=1,nreg
+ 60     read (2,*,err=940)  pixels(i)
+       CLOSE (UNIT=2)
+       RETURN
+ 920   WRITE (LUERR,1101) FNAME
+ 1101  FORMAT (' *** FILE NOT FOUND ***   ',/' ', A80)
+       STOP
+ 930   WRITE (LUERR,1102) FNAME
+ 1102   FORMAT (' **** ERROR WHILE READING FILE ***  ',/' ',A80)
+      STOP
+  940  write (luerr,*)' *** ERROR: while reading tisact file'
+       write (luerr,*)' reading no. of pixels/region '
+       stop 
+	
+	END
+********************************************************************
+*                                                                  *
+*    READBLD.FTN                                                    *
+*                                                                  *
+*      THIS PROGRAM READS IN A BLOOD CURVE FROM A DESIGNATED       *
+*    FILE, THEN CONVERTS THE IRREGULARLY TIMED MEASURED POINTS     *
+*    INTO AN EVENLY SPACED INPUT FUNCTION.  THIS IS DONE USING     *
+*    SIMPLE INTERPOLATION.                                         *
+*                                                                  *
+*                                                                  *
+********************************************************************
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C          WRITTEN BY MARK MINUTN
+C          MODIFIED BY JOANNE MARKHAM  SEPT. 1989
+C
+C       INTERPOLATE CURVE FROM 0 BY VARIABLE TDEL
+C       AND CHECK TO SEE IF CURVE ENDS BEFORE SCANS
+C       IF SO, EXTRAPOLATE BY REPEATING LAST DATA VALUE
+C       UNTIL BLOOD CURVE EXTENDS TO END OF SCAN TIME
+C
+C    MODIFIED FOR:  OPTMAIN
+C
+C     TB  ADDED AS NEW ARGUMENT
+C     TDEL ADDED AS NEW ARGUMENT
+C     TEND  ADDED AS NEW ARGUMENT
+C
+C
+C     NBLD    -  NUMBER OF POINTS IN INTERPOLATED CURVE
+C     BLD     -  BLOOD ACTIVITY FOR INTERPOLATED TIME POINTS
+C     NUMBLD  -  NUMBER OF POINTS IN ORIGINAL BLOOD CURVE
+C     A       -  BLOOD ACTIVITY IN ORIGINAL CURVE
+C     T       -  TIME POINTS FOR ORIGINAL BLOOD CURVE
+C     TB      -  TIME POINTS FOR INTERPOLATED BLOOD CURVE
+C     TDEL    -  TIME INCREMENT ( SET TO 1 SEC NOW)
+C     TEND    -  ENDING TIME FOR TISSUE SCAN DATA
+C     FNAME   -  FILENAME FOR BLOOD CURVE
+C
+C   LOGICAL UNITS:
+C           LUIN     -  .CMD FILE CONTAINING FILE NAME FOR BLOOD CURVE
+C           LU  2   -   ASSIGNED TO BLOOD CURVE
+C
+C          LUERR      -   ERROR MESSAGES
+C
+C
+
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      SUBROUTINE BLDI(NUMBLD,T,A,NBLD,TB,BLD,TDEL,TEND,FNAME)
+
+
+      REAL TB(2),BLD(2)
+      REAL T(100),A(100)
+
+      CHARACTER*70 HEADER
+      CHARACTER*80 FNAME
+      data luin,luerr/5,6/
+
+      WRITE(luerr ,*)
+      WRITE(luerr ,*)' ENTER NAME OF FILE CONTAINING BLOOD CURVE DATA'
+      READ(luin,1020)FNAME
+1020   FORMAT(A80)
+
+      OPEN(2,FILE=FNAME,STATUS='OLD',ERR=950)
+
+      READ(2,1040)HEADER
+1040   FORMAT(A70)
+      write (luerr,*)' FILE ', fname
+      WRITE(luerr,*)'  HAS BEEN OPENED, HEADER IS: '
+      WRITE(luerr,*)' ',HEADER
+
+      READ(2,*,ERR=940)N
+      NUMBLD=N
+      IF (N.GT.500)THEN
+      WRITE (LUERR,*) ' ERROR - NO OF DATA POINTS > 500 ',N
+      STOP 3
+      ENDIF
+
+      IF(N.LT.2)GOTO 940
+
+      DO 50 I=1,N
+      READ(2,*,ERR=940)T(I),A(I)
+ 50     CONTINUE
+
+C
+C  READ IN TIME-OFFSET VALUE
+C
+      TIMEOFF=0
+      READ(2,*,END=65)TIMEOFF
+
+C
+C
+       CLOSE (UNIT=2)
+      DO 60 I=1,N
+      T(I)=T(I)-TIMEOFF
+ 60   CONTINUE
+
+65     CONTINUE
+C
+C     CHECK FOR TOTAL TIME INTERAL AND SET TDEL
+C     ACCORDINGLY
+C
+C     JOANNE MARKHAM  AUG 1991
+C
+         IF (T(N).LE.1000.)TDEL = 0.5
+
+C
+C   REPLACED ORGINIAL CODE  --JOANNE MARKHAM ,SEPT 1989
+C
+       IF(T(1).LE.0.) THEN
+       TT =0.
+       JJ = 0
+       ELSE
+       TB(1) =0.
+       JJ =1
+       TT = TDEL
+       ENDIF
+       JK =1
+ 100    CONTINUE
+        DO 130 I =JK,N
+        IF (T(I)-TT) 130,140,150
+ 130    CONTINUE
+ 140    CONTINUE
+        JJ = JJ+1
+        TB(JJ) =TT
+        BLD(JJ) =A(I)
+        JK =I
+        GO TO 180
+ 150    JJ=JJ +1
+        TB(JJ) = TT
+        IF (I.EQ.1) GO TO 155
+        II=I-1
+        R = (TT-T(II))/(T(I)-T(II))
+        BLD(JJ)=A(II) + R*(A(I)-A(II))
+        JK = II
+        GO TO 180
+ 155    CONTINUE
+        BLD(JJ) = TT*A(1)/T(I)
+ 180    TEMP = TT +TDEL
+        IF (TEMP.GT.T(N)) GO TO 200
+        TT = TEMP
+        GO TO 100
+ 200    NBLD =JJ
+        IF (TEND.LE.TB(JJ)) GO TO 230
+        M = (TEND-TB(JJ))/TDEL
+        WRITE (LUERR,1102)TEND,TB(JJ)
+ 1102   FORMAT (' ERROR , SCAN TIME EXTENDS PAST END OF BLOOD ',
+     1'SAMPLES', 2F12.2)
+        IF (M.GT.20) GO TO 960
+        WRITE (LUERR,1104)M
+ 1104   FORMAT (I10, ' POINTS WILL BE ADDED AT END BY DUPLICATING',
+     1' THE LAST BLOOD SAMPLE ')
+       C = A(N)
+       DO 220 I = 1,100
+       JJ =JJ+1
+       TT =TT+TDEL
+       TB(JJ) =TT
+       BLD(JJ) =C
+220    IF (TT.GE.TEND) GO TO 230
+230    NBLD =JJ
+
+      RETURN
+
+
+940   WRITE(luerr,*)
+      WRITE (LUERR,*)' ...ERROR...INCORRECT NO OF BLOOD SAMPLE VALUES '
+      WRITE(luerr,*)' ...ERROR WHILE READING BLOOD DATA FILE ',FNAME
+      GOTO 900
+950   WRITE(luerr,*)
+      WRITE(luerr,*)' ...ERROR...UNABLE TO OPEN/FIND FILE NAMED ',FNAME
+      GO TO 900
+ 960   WRITE (luerr,*)
+       WRITE (luerr,*) '...ERROR...SCAN TIME EXCEEDS BLOOD SAMPLES'
+       WRITE (luerr,*) ' BY MORE THAN 20 POINTS ',M
+900   STOP 7
+      END
+******************************************************************
+*                                                                *
+*   JMPBLK.FTN                                                  *
+*                                                                *
+*     THIS SUBROUTINE ESTABLISHES THE VARIABLES OF THE           *
+*   PARAMETER BLOCK FILES.  IT READS IN FIXED VALUES FOR         *
+*   ALL REGIONS ANALYZED, AND DETERMINES LOCAL VARIABLE VALUES   *
+*   FROM SEPARATE PET SCAN DATA (WHICH HAVE BEEN SEPERATELY      *
+*   METEVAL-ED).  THE NAMES OF THESE PET SCANS ARE READ IN FROM  *
+*   AN INPUT FILE.                                               *
+*                                                                *
+******************************************************************
+
+      SUBROUTINE PBLK(NUMCURV,NPARM,IOPARM,PBLOCK,
+     *           FNAME,NPET,NPETPARM,NREG)
+
+
+      INTEGER*4 IOPARM(6),NUMCURV,NPARM,NREG,NPETPARM(10)
+      REAL PBLOCK(20),PBLOCKIN(20)
+      REAL PETPARM(10,100)
+      CHARACTER*80 FNAME,FNAME1
+      data luin,luout/5,6/
+C
+C  IF -NUMCURV- = 0 THEN THIS IS ORIGINAL SET-UP CALL TO SUBROUTINE
+C
+
+      IF(NUMCURV.GT.0)GOTO 700
+C
+C  NOW OBTAIN PET SCAN DATA FILE
+C
+      WRITE(luout,*)
+      WRITE(luout,*)' ENTER NAME OF FILE WITH PARAMETER BLOCK INFO'
+      READ (LUIN,110) fname1
+110   FORMAT(A80)
+      FNAME=FNAME1
+
+      OPEN(2,FILE=FNAME1,STATUS='OLD',ERR=910)
+
+
+
+
+C
+C  READ ORIGINAL VALUES OF PBLOCK INTO STORAGE
+C
+
+      READ(2,*)(PBLOCKIN(I),I=1,20)
+
+C
+C  READ IN NUMBER OF PARAMETERS TO BE OPTIMIZED
+C
+
+      READ(2,*)NPARM
+
+C
+C  READ IN THE PARAMETER NUMBER OF THOSE TO BE OPTIMIZED
+C
+
+        IF (NPARM.NE.0) THEN
+      READ(2,*)(IOPARM(I),I=1,NPARM)
+        ENDIF
+
+C
+C  READ IN NUMBER OF REGIONAL DEPENDENT PARAMETERS
+C
+
+      READ(2,*)NPET
+      IF(NPET.GT.0)THEN
+
+C
+C  FOR EACH PARAMETER, READ IN PARAMETER INDEX
+        READ (2,*) (NPETPARM(I),I=1,NPET)
+      DO 150 I=1,NREG
+      READ (2,*)(PETPARM(J,I),J=1,NPET)
+150   CONTINUE
+      ENDIF
+
+      CLOSE(2)
+
+C
+C  ALL DATA READ IN
+C
+
+C
+C  ALL PET-RELATED PARAMETERS NEED TO BE STORED IN ARRAYS
+C
+
+      IF(NPET.GT.0)THEN
+
+
+C
+C  ALL PARAMETER BLOCK VARIABLES NOW STORED,
+C  SET UP DONE
+C
+***********************DEBUG*********************
+C      WRITE(luout,*)PETPARM
+*************************************************
+
+      ENDIF
+
+
+      RETURN
+
+
+*********************
+
+C
+C  SET UP NEW PARAMETER BLOCK WITH REGION-SPECIFIC PARAMETER VALUES
+C
+
+700   DO 720 I=1,20
+720   PBLOCK(I)=PBLOCKIN(I)
+
+C
+C  IF NO PET-DEPENDENT PARAMETER VALUES, RETURN NOW
+C
+
+      IF(NPET.EQ.0)RETURN
+
+C
+C  LOAD ALL REGION-SPECIFIC PARAMETER VALUES INTO MAIN P-BLOCK
+C
+
+      DO 740 I=1,NPET
+      N=NPETPARM(I)
+740   PBLOCK(N)=PETPARM(I,NUMCURV)
+
+      RETURN
+
+
+******************************************
+
+C
+C  ERROR MESSAGES
+C
+
+910   WRITE(luout,*)' ...ERROR... CANNOT OPEN FILE NAME ',FNAME1
+      GOTO 1000
+1000  continue 
+      STOP
+
+
+      END
+
+*******************************************************************
+*                                                                 *
+*	>>>>>>>> CHANGE to DOUBLE PRECISION FOR MATRIX CALC 
+*                and for calculation of fitted function  
+*   
+*                compute fitted function in DP so that
+*                slope /DERATIVE WILL BE MORE ACCURATE
+*                still didn't work well for 5 parameters 
+*                so changed matrix calc to DP
+*     Joanne Markham  Sept -NOV. 1992 
+*
+*    JMMARQ.FTN                                                   *
+C   WEIGHTED SUM-OF-SQUARES
+C   WEIGHTS COMPUTED IN MAIN
+*    (MODIFIED FROM RPOMARQ (REV 1 , 2/3/85, BY MARK MINTUN)      *
+*                                                                 *
+*     THIS SUBROUTINE USES THE MARQUART METHOD OF PARAMETER       *
+*    OPTIMIZATION TO SOLVE FOR THE BEST FIT TO A MEASURED         *
+*    SET OF FUNCTION VALUES.  THE FUNCTION CAN BE ANY             *
+*    WRITTEN MATHEMATICAL RELATION BETWEEN THE PARAMETERS AND     *
+*    THE SINGLE SET OF MEASURED VALUES.  NO OTHER RELATION NEED   *
+*    BE WRITTEN (i.e. DERIVATIVES).                               *
+*                                                                 *
+*     I HAVE BEEN UNABLE TO FIND REFERENCE FOR THIS PARTICULAR
+*     VERSION OF MARQUARDT'S METHOD  (JOANNE MARKHAM)
+*                                                                 *
+*   THE ORIGINAL ENCODING OF THE MARQUART METHOD ON PERKIN-       *
+*   ELMER MACHINES IN FORTRAN WAS DONE BY.....                    *
+*        MONTGOMERY A. MARTIN, 1983                               *
+*                                                                 *
+*******************************************************************
+C
+
+      SUBROUTINE MARQ(NBLD,NPOINT,NPBLOCK,NPARM,ERRSUM,ITER,
+     %           ICONV,N2PRINT,TIMBLD,BLD,TIME1,TIME2,PBLOCK,IOPARM,
+     %           PARM1,TISACT,TISACT1,TISMISC,WEIGHTS,PBNAME)
+
+      
+       DOUBLE PRECISION DEQ1(10,10),DEQ2(10,10),DEQ1A(10),
+     1 DEQ2A(10),DEQ1B(10),DEQ2B(10),dtemp,SLOPE(100,10)
+   
+       double precision dact(100),dact1(100),dactemp(100),dww,dtemp2
+
+      REAL TIMBLD(NBLD),BLD(NBLD),PBLOCK(NPBLOCK),PARM1(NPARM)
+      REAL TISACT(NPOINT),TISACT1(NPOINT),TISMISC(NPOINT)
+      INTEGER*4 TIME1(NPOINT),TIME2(NPOINT),IOPARM(NPARM)
+      CHARACTER*30 PBNAME(20)
+       REAL WEIGHTS (100)
+
+      REAL PARM2(10),PARM3(10),TEMP(100),TEMPD(100)
+c     REAL CEQ1(6,6),CEQ2(6,6),CEQ1A(6),CEQ1B(6),CEQ2A(6),CEQ2B(6)
+      REAL BMAX(10),BMIN(10),PARMSCALE(10),PARMREAL(10),TISMISC1(100)
+
+
+      DATA BMAX/10*1.E+10/
+      DATA BMIN/10*0.0/
+      data luerr/6/
+
+      FV = 0.
+      FNU = 0.
+      FLA = 0.
+      TAU = 0.
+      EPS = 0.
+      PHMIN = 0.
+      ICONV=NPARM
+      ITER=0
+
+************ DEBUG INSTRUCTIONS *******************
+
+*     WRITE(12,*)' MARQ SUB ENTERED'
+*     WRITE(12,*)' PBLOCK=',(PBLOCK(I),I=1,20)
+*     WRITE(12,*)' PARM1 =',(PARM1(I),I=1,NPARM)
+*     WRITE(12,*)' TISACT = ',(TISACT(I),I=1,NPOINT)
+
+*****************************************************
+C
+C
+C
+      DO 20 I=1,NPARM
+      PARMSCALE(I)=PARM1(I)
+      IF(PARM1(I).EQ.0.)THEN
+      WRITE(luerr,*)' ...ERROR... ONE OF STARTING PARAMETERS = 0.'
+      STOP
+      ENDIF
+20    PARM1(I)=1.
+
+100   IF(ICONV.LE.0)THEN
+      DO 110 IPARM=1,NPARM
+110   PARM1(IPARM)=PARM1(IPARM)*PARMSCALE(IPARM)
+      RETURN
+      ENDIF
+C
+C
+      IF( FNU .LE. 0. ) FNU = 10.0
+      IF( FLA .LE. 0. ) FLA = 0.01
+      IF( TAU .LE. 0. ) TAU = 0.00001
+      IF( EPS .LE. 0. ) EPS = 0.00010
+      IF ( PHMIN .LE. 0.) PHMIN = 0.
+
+************ DEBUG INSTRUCTIONS *******************
+
+**     WRITE(12,*)' ICONV = ',ICONV
+**     WRITE(12,*)' CONV VARIABLES ',FNU,FLA,TAU,EPS,PHMIN
+
+*****************************************************
+C
+C
+C
+      ITERNEW=1
+530   IF(ITER.GT.0) GOTO 1530
+      DO 560 J1 = 1,NPARM
+      PARM2(J1)=PARM1(J1)
+560   PARM3(J1)=PARM1(J1)+1.0E-02
+      GO TO 1030
+
+
+590   IF (PHMIN .GT. PH .AND. ITER .GT. 1) GO TO 625
+
+*****DEBUG******
+**     WRITE(12,*)' BEGIN CALC OF SLOPE'
+****************
+
+      DO 620 J1 = 1,NPARM
+
+      DO 606 J2 = 1,NPARM
+606   PARM2(J2)=PARM1(J2)
+      DEN=0.01*AMAX1(PARM3(J1),ABS(PARM2(J1)))
+      IF (PARM2(J1) + DEN .LE. BMAX(J1)) GO TO 55
+      PARM2(J1) = PARM2(J1) - DEN
+      DEN = -DEN
+      GO TO 56
+55    PARM2(J1) = PARM2(J1) + DEN
+56    DO 57 IPARM=1,NPARM
+57    PARMREAL(IPARM)=PARMSCALE(IPARM)*PARM2(IPARM)
+      CALL FUNC(NBLD,NPOINT,NPBLOCK,NPARM,PBNAME,N2PRINT,
+     %       TIMBLD,BLD,TIME1,TIME2,PBLOCK,IOPARM,PARMREAL,dactemp,
+     %       TISMISC1)
+      DO 610 J2 = 1,NPOINT
+      dtemp = dactemp(j2) -dact1(j2)
+      dtemp2 = dact1(j2)
+      if (dtemp2.eq.0.) dtemp2 = 1.0
+      dtemp2 =  dabs(dtemp/dtemp2)
+      if (dtemp2.lt.1.0d-6)dtemp =0.
+610   SLOPE(J2,J1)=dtemp/DEN
+620   CONTINUE
+C
+C      SET UP CORRECTION EQUATIONS
+C
+
+******DEBUG*******
+**     WRITE(12,*)' SET UP CORRRECTION EQS'
+*******************
+
+625   DO 725 J1 = 1,NPARM
+      DEQ1A(J1)=0.
+      DO 640 J2 = 1,NPOINT
+      dWW = WEIGHTS(J2)
+      dtemp = TISACT(J2) - dACT1(J2)
+640   DEQ1A(J1)=DEQ1A(J1)+SLOPE(J2,J1)*DWW*dtemp
+      DO 680 J2 = 1,NPARM
+      DEQ1(J1,J2)=0.
+      DO 680 J3 = 1,NPOINT
+680   DEQ1(J1,J2)=DEQ1(J1,J2)+WEIGHTS(J3)*SLOPE(J3,J1)*SLOPE(J3,J2)
+      IF(DEQ1(J1,J1).GT.1.D-20) GO TO 725
+      DO 694 J2 = 1,NPARM
+694   DEQ1(J1,J2) = 0.
+      DEQ1A(J1)=0.
+      DEQ1(J1,J1) = 1.0D+0
+725   CONTINUE
+
+      dtemp =0.
+      DO 729 J1 = 1,NPARM
+729   dtemp = dtemp + DEQ1A(J1)*DEQ1A(J1)
+       GN = dtemp
+C
+C     SCALE CORRECTION EQUATIONS
+C
+
+******DEBUG*******
+**     WRITE(12,*)' SCALE CORRECTION EQS'
+******************
+
+      DO 726 J1 = 1,NPARM
+726   DEQ1B(J1)=DSQRT(DEQ1(J1,J1))
+      DO 727 J1=1,NPARM
+      DEQ1A(J1)=DEQ1A(J1)/DEQ1B(J1)
+      DO 727 J2 = 1,NPARM
+727   DEQ1(J1,J2)=DEQ1(J1,J2)/(DEQ1B(J1)*DEQ1B(J2))
+
+
+      FL = FLA/FNU
+      GO TO 810
+800   FL = FNU*FL
+810   DO 840 J1 = 1,NPARM
+      DO 830 J2 = 1,NPARM
+830   DEQ2(J1,J2)=DEQ1(J1,J2)
+      DEQ2A(J1)=DEQ1A(J1)
+840   DEQ2(J1,J1)=DEQ2(J1,J1)+FL
+C
+C     SOLVE CORRECTION EQUATIONS
+C
+
+******DEBUG***********
+**     WRITE(12,*)' SOLVE CORRECTION EQS'
+*********************
+
+      DO 930 L1 = 1,NPARM
+      L2=L1+1
+      DO 910 L3 = L2,NPARM
+910   DEQ2(L1,L3)=DEQ2(L1,L3)/DEQ2(L1,L1)
+      DEQ2A(L1)=DEQ2A(L1)/DEQ2(L1,L1)
+      DO 930 L3 = 1,NPARM
+      IF(L1.EQ.L3)GOTO 930
+      DO 925 L4 = L2,NPARM
+925   DEQ2(L3,L4)=DEQ2(L3,L4)-DEQ2(L1,L4)*DEQ2(L3,L1)
+      DEQ2A(L3)=DEQ2A(L3)-DEQ2A(L1)*DEQ2(L3,L1)
+930   CONTINUE
+C
+      DN = 0.
+      DG = 0.
+      DO 1028 J1 = 1,NPARM
+      DEQ2B(J1)=DEQ2A(J1)/DEQ1B(J1)
+      tempa = deq2b(j1)
+      PARM2(J1)=AMAX1(BMIN(J1),AMIN1(BMAX(J1),
+     %               (PARM1(J1)+tempa)))
+      IF(PARM2(J1).LT.(0.1*PARM1(J1)))THEN
+      PARM2(J1)=0.1*PARM1(J1)
+      ENDIF
+      DG=DG+DEQ2B(J1)*DEQ1A(J1)*DEQ1B(J1)
+      DN=DN+DEQ2B(J1)*DEQ2B(J1)
+1028  DEQ2B(J1)=PARM2(J1)-PARM1(J1)
+
+      COSG = DG/SQRT (DN*GN)
+      JGAM = 0
+      IF( COSG ) 1100,1110,1110
+1100  JGAM = 2
+      COSG = -COSG
+1110  CONTINUE
+      COSG = AMIN1(COSG, 1.0)
+      GAMM = ACOS(COSG)*180./(3.14159265)
+      IF( JGAM .GT. 0 ) GAMM = 180. - GAMM
+1030  DO 1035 IPARM=1,NPARM
+*********************DEBUG*********************
+*     WRITE(luerr,*)' DEBUG,1  ',NPARM,IPARM,PARMREAL,PARMSCALE,PARM2
+***********************************************
+1035  PARMREAL(IPARM)=PARMSCALE(IPARM)*PARM2(IPARM)
+
+*     WRITE(luerr,*)' DUMMY WRITE VARIABLE'
+*     WRITE(luerr,*)' DUMMY WRITE HERE'
+*     WRITE(luerr,*)' LINE 3   '
+*     WRITE(luerr,*)' DEBUG-MARQ CALLIN FUNC'
+
+      CALL FUNC(NBLD,NPOINT,NPBLOCK,NPARM,PBNAME,N2PRINT,
+     %   TIMBLD,BLD,TIME1,TIME2,PBLOCK,IOPARM,PARMREAL,dact,TISMISC1)
+      PHI = 0.
+      DO 1520 J1 = 1,NPOINT
+
+*******************DEBUG********************
+      IF(N2PRINT.EQ.3)THEN
+      DEBUG1=TIME2(J1)-TIME1(J1)+1
+      DEBUG2=TISACT(J1)/DEBUG1
+      DEBUG3=TEMP(J1)/DEBUG1
+      DEBUG4=DEBUG1/2.+TIME1(J1)
+*     WRITE(12,1519)I,DEBUG4,DEBUG2,DEBUG3,(DEBUG3-DEBUG2),
+*    &              (TEMP(J1)-TISACT(J1))
+*1519  FORMAT(1X,I3,1X,F8.1,1X,4(G12.4,1X))
+      ENDIF
+*********************************************
+      tempa = dact(j1) - tisact(j1)
+1520  PHI=PHI+ WEIGHTS(J1)*tempa*tempa
+
+*******************DEBUG**********************
+*     WRITE(12,*)'  SUM OF SQUARED ERROR   =  ',PHI
+**********************************************
+
+      IF(PHI .LT. 1.E-10) GO TO 3000
+      IF( ITER .GT. 0 ) GO TO 1540
+      GO TO 2110
+1540  IF( PHI .GE. PH ) GO TO 1530
+C
+C     EPSILON TEST
+C
+      ICONV=0
+      DO 1220 J1 = 1,NPARM
+      tempa = deq2b(j1)
+1220  IF(ABS(tempa)/(TAU+ABS(PARM2(J1))).GT.EPS)ICONV=ICONV+1
+      IF(ICONV.EQ.0) GOTO 1400
+C
+C     GAMMA LAMBDA TEST
+C
+      IF (FL .GT. 1.0 .AND. GAMM .GT. 90.0 ) ICONV= -1
+      GO TO 2105
+C
+C     GAMMA EPSILON TEST
+C
+1400  IF (FL .GT. 1.0 .AND. GAMM .LE. 45.0  ) ICONV= -4
+      GO TO 2105
+C
+1530  IF(ITERNEW.GT.2)GOTO 2310
+      ITERNEW=ITERNEW+1
+      GO TO (530,590,800),ITERNEW
+2310  IF( FL .LT. 1.0E+8 ) GO TO 800
+      ICONV= 0
+C
+2105  FLA = FL
+      DO 2091 J2 = 1,NPARM
+2091  PARM1(J2)=PARM2(J2)
+2110  DO 2050 J2 = 1,NPOINT
+      TISMISC(J2)=TISMISC1(J2)
+      dact1(j2) = dact(j2)
+2050  TISACT1(J2)=dact(J2)
+      PH =PHI
+      ITER = ITER + 1
+      GOTO 100
+3000  ICONV= 0
+      GO TO 2105
+      END
+C *************************************************
+C   SUROUTINE JMCONV.FTN
+C
+C   AUTHOR:  JOANNE MARKHAM
+C   DATE:    DEC 1989
+C   WRITTEN FOR :  OPTMAIN
+C   INTENT:  SPECIAL PURPOSE CONVOLUTION ROUTINE
+C    (1)    USES SIMPSON RULE FOR CONVOLUTION
+C    (2)    CONVOLUTION IS ONE-SIDED (LAPLACE, NOT FOURIER)
+C    (3)    DATA VALUES ARE EQUALLY SPACED
+C    (4)    DATA STARTS AT T =0
+C    (5)    INCREMENT OF COMPUTED INTEGRAL IS DEL
+C    (6)    THE TWO INTEGRANDS HAVE INCREMENT OF DEL/2
+C           OR 2* N-1 POINTS INSTEAD OF N
+C
+C   modify Oct 1992 to make D -output - double precision
+C   modify Nov 1992 to make B  input  double precision
+C
+C   VARIABLE PASSED:    SEE BELOW
+C
+C
+C   CALLED BY:  FUNCTION EVALUATION SUBROUTINES USED BY THE
+C               PARAMETER ESTIMATION PROGRAMS (OPTMIZATION PROGRAM)
+C
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+       SUBROUTINE JMCONV (N, DEL, B, G, D)
+C
+C     N    -  NUMBER OF VALUES IN OUTPUT FUNCTION D
+C     DEL  -  INCREMENT FOR OUTPUT FUNCTION D
+C     B    -  INTEGRAND WITH 2*N-1 POINTS
+C     G    -  INTEGRAND WITH 2*N-1 POINTS
+C     D    -  OUTPUT - CONVOLUTION OF B AND G
+C
+        double precision cona,D,temp,B 
+	DIMENSION G(2),B(2),D(2)
+       CONA = DBLE(DEL)/6.
+       D(1) =0.
+       DO 200 I=2,N
+       J = 1
+       M = 2*I-1
+       TEMP=0.
+       DO 100 K = 1,I-1
+       
+       TEMP = TEMP + G(J)*B(M) + 4.0D0*G(J+1)*B(M-1) +
+     1       G(J+2)*B(M-2)
+       J = J+2
+       M = M-2
+ 100   CONTINUE
+       D(I) = CONA*TEMP
+ 200   CONTINUE
+       RETURN
+       END
+******************************************************************
+*                                                                *
+*   JMFUNCG.FTN                                                  *
+*                                                                *
+*     THIS SUBROUTINE 1) CALCULATES THE TISSUE ACTIVITY GIVEN    *
+*   A SET OF MODEL PARAMETERS AND INPUT CURVE (BLOOD ACTIVITY).  *
+*   AND 2) CALCULATED PHYSIOLOGIC PARAMTERS FROM GIVEN MODEL     *
+*   PARAMETERS.                                                  *
+*                                                                *
+*   MODIFIED BY JOANNE MARKHAM NOV 1989
+*   FOR GLUCOSE MODELS ONLY
+C
+C
+C   Modified by Joanne Markham Oct 1992
+C               to use DP for result of convolution
+C
+C
+C
+C   CALL SUBROUTNE BY Joanne Markham  FOR "NOFLOW-FDG " GLUCOSE MODEL
+C    COMPUTE IMPULSE RESPONSE FOR COMPARTMENTAL MODELS
+C
+C   CALLS SUBROUTINE JMCONV FOR CONVOLUTION OF IMPULSE RESPONSE WITH
+C   BLOOD CURVE
+******************************************************************
+
+      SUBROUTINE FUNC(NBLD,NPOINT,NPBLOCK,NPARM,PBNAME,N2PRINT,
+     %          TIMBLD,BLD,TIME1,TIME2,PBLOCK,IOPARM,PARM,TISACT,
+     %          TISMISC)
+
+      Double precision  TISACT(npoint),Q(4000),Q1,Q2,BLDINT(8000)
+      double precision dtemp 
+      REAL BLD(NBLD),PBLOCK(NPBLOCK),PARM(NPARM)
+      REAL RATES(6),QS(8000)
+      REAL TISMISC(NPOINT),TIMBLD(NBLD)
+      REAL REALT1(100),REALT2(100)
+
+      INTEGER*4 TIME1(NPOINT),TIME2(NPOINT),IOPARM(NPARM)
+
+      CHARACTER*30 PBNAME(20)
+      DATA JFLAG/0/
+
+C
+C     DEFINITION OF ARGUMENTS
+C
+C     NBLD    -   NUMBER OF POINTS IN INTERPOLATED BLOOD CURVE
+C                INTERPOLATED TO 1 SEC
+C     NPOINT  -   NUMBER OF PET SCANS
+C     NPBLOCK -  NUMBER OF PARAMETERS--VALUE SET IN THIS ROUTINE
+C                MAXIMUM OF 20
+C     NPARM  -   NUMBER OF VARIABLE PARAMETERS
+C     PBNAME -   IDENTIFICATION OF PARMETERS, ASSIGED HERE
+C     N2PRINT -   PRINT SWITCH
+C     TIMBLD -   ARRAY OF TIMES FOR  BLOOD CURVE
+C     BLD    -   ARRAY OF ACTIVITY VALUES FOR BLOOD CURVE
+C     TIME1  -   START TIME OF PET SCANS (ARRAY)
+C     TIME2  -   END TIME FOR PET SCANS
+C                LENGTH OF SCAN IS TIME2-TIME1
+C     PBLOCK -   PARAMETER VALUES
+C     IOPARM -   INDEX OF VARIABLE PARAMETERS IN PBLOCK ARRAY
+C     PARM   -   ARRAY CONTAINING LATEST VALUE OF VARIABLE PARAMETERS
+C     TISACT -   TISSUE ACTIVITY, COMPUTED HERE
+C     TISMISC -  NOT USED HERE
+C
+C       ****   LOCAL VARIABLES  ****
+C
+C    Q      -   TEMPORARY FOR TISSUE ACTIVITY COMPUTATIONS
+C    QS     -   TEMPORARY FOR IMPULSE RESPONSE
+C    BLDINT -   INTEGRAL OF BLOOD CURVE - USED TO AVOID
+C               INTEGRATION AT EACH STEP
+C
+C    REALT1  - REAL VARIABLE FOR TIME1
+C    REALT2  - REAL VARIABLE FOR TIME2 ARRAY
+C
+C
+
+********************************************************
+
+      IF(JFLAG.EQ.0)THEN
+      PBNAME(01)='BLOOD FLOW       ML/MIN/100G'
+      PBNAME(02)='BLOOD VOL        ML/100G'
+      PBNAME(03)='BLD GLUCOSE      uMOL/ML'
+      PBNAME(04)='K-01 (F/V1)      PER MIN '
+      PBNAME(05)='K-21             PER MIN'
+      PBNAME(06)='K-12/K-02        PER MIN'
+      PBNAME(07)='K-32             PER MIN'
+      PBNAME(08)='K-23             PER MIN'
+      PBNAME(09)='T0               SEC    '
+      PBNAME(10)='T(1/2)           SECONDS'
+      PBNAME(11)='CHI              PER MIN '
+      PBNAME(12)='KD               ML/MIN/100G'
+      PBNAME(13)='FDG MET INDEX    uMOL/MIN/100G'
+
+      JFLAG=13
+      NPBLOCK=13
+C
+C  MOVE TIME INFORMATION FOR PET SCANS TO REAL ARRAY
+C
+        DO 1207 I=1,NPOINT
+        REALT1(I) = TIME1(I)
+        REALT2(I) = TIME2(I)
+ 1207   CONTINUE
+      TDEL =TIMBLD(2)-TIMBLD(1)
+       OUTDEL=2*TDEL
+C
+C   INTEGRATE BLOOD CURVE AFTER
+C   ADDING 100 POINTS AT END TO ASSURE BLOOD DATA IS LONG ENOUGH
+C
+C
+C
+C
+C    AVERAGE LAST 4 POINTS AND DUPLICATE FOR 100 POINTS
+C
+C
+       NCA = NBLD
+       IF ((NCA+100).GT.8000)THEN
+       WRITE (6,*)' ERROR - TIME + PADDING > 7999 SEC ',NCA
+       STOP
+       ENDIF
+       AV = (BLD(NCA) + BLD(NCA-1) + BLD(NCA-2) + BLD(NCA-3))/4.
+      TT = TIMBLD(NCA)
+       DO 1260 I=1,100
+       NCA=NCA +1
+       TT = TT + TDEL
+       TIMBLD(NCA) = TT
+ 1260  BLD(NCA) =AV
+       BLDINT(1) =0.
+       dtemp  =0.
+        DO 1270 I = 2,NCA
+       dtemp  = dtemp +0.5*(BLD(I) + BLD(I-1))
+ 1270   BLDINT(I) = dtemp *TDEL
+      ENDIF
+********************************************************
+
+*  LOAD NEW PARAMETERS INTO PARAMETER BLOCK FOR ALL CALCULATIONS
+
+      DO 50 I=1,NPARM
+      J=IOPARM(I)
+50    PBLOCK(J)=PARM(I)
+*******
+*
+*
+*    PARAMETER BLOCK KEY
+*
+*      1       FLOW
+*      2       BLOOD VOLUME
+*      3       BLOOD GLUCOSE CONCENTRATION
+*      4       FLOW/VOL (INVERSVE OF MEAN TRANSIT TIME)
+*      5       K-2-1     (K1)  K1 = k21 *VB
+*      6       K-1-2     (K2)
+*      7       K-3-2     (K3)
+*      8       K-2-3     (K4)
+*      9       T0   - TIME SHIFT FOR BLOOD CURVE (SEC)
+*     10       THALF - HALF-LIFE FOR TRACER (SEC)
+*              DATA SHOULD BE EITHER BOTH BLOOD AND TISSUE
+*              VALUES CORRECTED (SET T1/2 TO 0) OR BOTH
+*              UNCORRECTED
+*
+*
+*******
+
+*
+*  CALCULATE SECONDARY VARIABLES FROM RATE CONSTANTS
+*  USE MIN FOR ALL VARIABLES EXCEPT THOSE REQUIRED FOR COMPUTATIONS
+*
+      BLDFLW=PBLOCK(1) * 1.05/6000.
+      BLDVOL=PBLOCK(2) * 0.0105
+       TRANSIT = BLDVOL/(BLDFLW*60.)
+       PBLOCK(4) = 1.0/TRANSIT
+      IF (PBLOCK(7).NE.0.)THEN
+      CHI=PBLOCK(5)*PBLOCK(7)/(PBLOCK(6)+PBLOCK(7))
+      ELSE
+      CHI =PBLOCK(5)
+      ENDIF
+      PBLOCK(11)=CHI
+      TEMP=1.0
+      PBLOCK(13)= CHI*PBLOCK(2)*PBLOCK(3)
+
+       PS = PBLOCK(5)*PBLOCK(2)
+       PBLOCK(12)=PS
+C
+C    CHANGE UNITS TO SEC FOR GLUCOSE RESPONSE COMPUTATIONS
+C
+        DO 60 I=1,5
+ 60     RATES(I) = PBLOCK(I+3)/60.
+
+        NPETI = TIME2(NPOINT)/TDEL +1.05
+C
+C        IF (NPETI.GT.NCA) THEN
+C
+C
+C
+
+************** DEBUG INSTRUCTIONS **********************
+
+*     WRITE(12,*)' FUNC ENTERED'
+      WRITE(12,*)' PBLOCK = ',(PBLOCK(I),I=1,NPBLOCK)
+*     WRITE(12,*)' IOPARM = ',(IOPARM(I),I=1,NPARM)
+*     WRITE(12,*)' PARM   = ',(PARM(I),I=1,NPARM)
+
+********************************************************
+
+
+*
+
+C
+C     CALL FDG (' no flow ')  SUBROUTINE FOR COMPUTING IMPULSE RESPONSE
+C   >>>> NOTE :  THIS SUBROUTINE PERFORMS DECAY CORRECTION ALSO
+C                IF PBLOCK(10) NOT EQUAL 0
+C
+C
+       CALL FDGNF (nca, timbld, rates, pblock(10),qs)
+c       write (12,*) ' response '
+c      write (12,3131) timbld(11),qs(11)
+c      write (12,3131) timbld(101),qs(101)
+c      write (12,3131)timbld(1001),qs(1001)
+c      write (12,3131)timbld(3001),qs(3001)
+3131   format (f9.2,f12.6)
+**************DEBUG****************
+*     WRITE(12,*)(QS(I),I=1,NPETI)
+***********************************
+
+C
+C   NOTE CONVOLUTION ASSUME EQUALLY SPACES INTERVALS OF TIME
+C   WITH INTERVAL OF OUTDEL/2 FOR INPUT AND OUTDEL FOR OUTPUT
+C    AND FIRST POINT AT T =0
+
+       NH = NCA/2 +1
+C
+       CALL JMCONV (NH,OUTDEL,BLDINT,qs,Q)
+C
+C  TRUE Q = VB [Q(i) + BLOOD(I)]
+C
+C
+	 do 220 i=1,nh
+	 q(i) = bldvol*(q(i) + bldint(2*i-1))
+220     continue
+C    SHIFT PET TISSUE ACTIVITY CURVE INSTEAD OF BLOOD CURVE
+C   SHIFT CAN BE EITHER NEGATIVE OR POSITIVE ALTHOUGH IT
+C   SHOULD BE POSITIVE FOR MOST CASES
+C
+        TSHIFT = PBLOCK(9)
+        IF (TSHIFT.LT.0.) GO TO 400
+
+       DO 350 I=1,NPOINT
+       TSS =  REALT1(I) + TSHIFT
+       J = TSS/OUTDEL +1
+       TEMP= (J-1)*OUTDEL
+       RATIO = (TSS-TEMP)/OUTDEL
+       Q1 = (1.0-RATIO)*Q(J) + RATIO*Q(J+1)
+       TE = REALT2(I) + TSHIFT
+       K = TE/OUTDEL +1
+       TEMP = (K-1)*OUTDEL
+        RATIO = (TE-TEMP)/OUTDEL
+        Q2 = (1.0-RATIO)*Q(K) + RATIO*Q(K+1)
+       TISACT(I) = (Q2-Q1)
+ 350   CONTINUE
+       GO TO 500
+ 400   CONTINUE
+C
+      DO 480 I = 1,NPOINT
+      TSS = REALT1(I)+TSHIFT
+      IF (TSS.GE.0.)GO TO 420
+      TSS = TSS + OUTDEL
+      IF (TSS.LE.0.) THEN
+      Q1 = 0.
+      GO TO 430
+      ELSE
+      Q1 = Q(2)* (TSS)/OUTDEL
+      GO TO 430
+      ENDIF
+ 420  CONTINUE
+      J = TSS/OUTDEL +1
+      TEMP = (J-1)*OUTDEL
+      RATIO = (TSS-TEMP)/OUTDEL
+      Q1 = Q(J) *(1.0-RATIO) + RATIO*Q(J+1)
+ 430  CONTINUE
+      TE = REALT2(I) + TSHIFT
+      IF (TE.GE.0.) GO TO 440
+      TE = TE +OUTDEL
+      IF (TE.LE.0) THEN
+      Q2 =0.
+      GO TO 450
+      ELSE
+      Q2 = Q(2)*(TE/OUTDEL)
+      GO TO 450
+      ENDIF
+ 440  CONTINUE
+       J = TE/OUTDEL +1
+       TEMP = (J-1)*OUTDEL
+       RATIO = (TE-TEMP)/OUTDEL
+       Q2 = (1.0-RATIO)*Q(J) + RATIO*Q(J+1)
+ 450   CONTINUE
+       TISACT(I) = (Q2-Q1)
+ 480  CONTINUE
+ 500    CONTINUE
+
+*
+*
+C
+C
+C
+
+******************DEBUG****************
+*     WRITE(12,*)(Q(I),I=1,NPETI)
+***************************************
+
+***************** DEBUG INSTRUCTIONS ******************
+*
+*      WRITE(12,*)' FUNC ENDING'
+*      WRITE(12,*)' TISACT = ',(TISACT(I),I=1,NPOINT)
+*
+*******************************************************
+
+      RETURN
+
+      END
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C    SUBROUTINE PARVAR
+C    AUTHOR:         JOANNE MARKHAM
+C    DATE:           NOV 1989
+C    WRITTEN TO USE WITH THE OPTMAIN PROGRAM WHICH ESTIMATES
+C    VALUES OF PARAMETERS FROM PET SCAN DATA
+C
+C     SUBROUTINE COMPUTES THE VARIANCE MATRIX FOR ESTIMATED PARAMETERS
+C
+C     VARIANCE MATRIX IS INVERSVE OF FISHER INFORMATION MATRIX
+C     FOR REFERENCES SEE:
+C
+C 1.  DETECTION, ESTIMATION, AND MODULATION THEORY, PART 1,
+C     VAN TREES, H. L., JOHN WILEY & SONS, 1968
+C 2.  PARAMETER ESTIMATION IN ENGINEERING AND SCIENCE
+C     BY JAMES V. BECK AND KENNETH J. ARNOLD,
+C     JOHN WILEY & SONS, 1977
+C
+C
+C     ASSUMPTION IS THAT THE ESTIMATES ARE GAUSSIAN DISTRIBUTED AND
+C     THAT THE OPTIMAL SOLUTION HAS BEEN REACHED
+C
+C     SUBROUTINES CALLED:
+C                 SVDINV  -- MATRIX INVERSION SUBROUTINE [svd]
+C                 FUNC  -- FUNCTION EVALUATION SUBROUTINE
+C
+C    PERFORM  MATRIX INVERSION IN DOUBLE PRECISION
+C
+C     SUBROUTINE ARGUMENTS:
+C
+C
+C      NBLD     -    NUMBER OF DATA VALUES FOR BLOOD CURVE
+C      NPOINT   -    NUMBER OF POINTS IN TISSUE CURVES (SCAN DATA)
+C      NPBLOCK  -    NUMBER OF PARAMETERS USED FOR COMPUTING
+C                    EXPECTED FUNCTION
+C      NPARM    -    NUMBER OF VARIABLE PARAMETERS
+C      PBNAME   -    IDENTIFICATION FOR PARAMETERS
+C      N2PRINT  -    PRINT CODE
+C      TB       -    ARRAY OF TIME VALUES FOR BLOOD CURVE
+C      BLD      -    BLOOD SAMPLES AT TIMES (TB)
+C      TIME1    -    ARRAY OF START TIMES FOR SCANS
+C      TIME2    -    ARRAY OF STOP TIMES FOR SCANS
+C      PBLOCK   -    ARRAY OF VALUES FOR FIXED AND VARIABLE PARAMETERS
+C      IOPARM   -    CONTAIN INDEXES FOR LOCATION IN PBLOCK OF
+C                    VARIABLE PARAMETERS
+C      PARM     -    ARRAY CONTAINING VALUES OF VARIABLE PARAMETERS
+C      TISACT   -    OBSERVED DATA
+C      TISSUE   -    EXPECTED VALUE OF TISSUE ACTIVITIES FOR
+C      WEIGHTS  -    WEIGHTS FOR WEIGHTED SS
+C                    SOLUTION PARAMETER VALUES
+C      RMSE     -    ROOT-MEAN-SQUARE ERROR AT SOLUTION
+C
+       SUBROUTINE PARVAR (NBLD, NPOINT, NPBLOCK, NPARM, PBNAME,
+     1N2PRINT, TB, BLD, TIME1, TIME2, PBLOCK, IOPARM, PARM,
+     2TISACT,TISSUE, WEIGHTS,RMSENW)
+	double precision amat(10,10)
+       DOUBLE PRECISION VMAT(10,10),DET,TEMPD,DD,dact(100),dact1(100)
+       INTEGER*4  NBLD,NPOINT, NPBLOCK, NPARM, N2PRINT, IOPARM(6)
+C
+C
+       REAL TB(NBLD), BLD(NBLD), TIME1(100),TIME2(100),PBLOCK(20),
+     1PARM(6),TISACT(NPOINT),TISSUE(NPOINT),RMSENW,PB(20)
+       REAL TIS(100),PF(10,100),PP(10),SD(10),TEMPT(100)
+       REAL WEIGHTS(100)
+C
+C      DACT & DACT1   -   STORAGE FOR EXPECTED TISSUE VALUES --USED 
+c                         COMPUTING      DERATIVES
+C      PF(I,J) -   JACOBIAN MATRIX OF PARTIAL DERIVATIVE OF FUNCTION
+C                WITH RESPECT TO PARAMETER I AT POINT J
+C      VMAT   -   CONTAINS FISHER INFORMATION MATRIX FIRST,
+C                 INVERSE OR VARIANCE MATRIX IS COMPUTED IN PLACE
+C      SD     -   STANDARD DEVIATION OF PARAMETER ESTIMATES
+C      TEMPT  -   DUMMY ARRAY REQUIRED BY FUNC
+C      DIAG   -   array of scale factors for scaling matrix
+C
+       CHARACTER *30 PBNAME(20)
+       data luerr,luout/6,6/
+       DO 10 I=1,20
+ 10    PB(I) = PBLOCK(I)
+       DO 20 I=1,NPARM
+ 20    PP(I) = PARM(I)
+C
+C    COMPUTE SUM OF SQUARES AND RMSE FOR WEIGHTED DATA
+C
+C
+         SUMS =0.
+         DO 25 I=1,NPOINT
+         SUMS = SUMS + WEIGHTS(I)*(TISSUE(I)-TISACT(I))**2
+ 25       CONTINUE
+           FN = NPOINT - NPARM
+           RMSE = SQRT(SUMS/FN)
+ 1082   FORMAT (/' WEIGHTED SUM-OF-SQUARES & RMSE ',2F20.3)
+C
+C    COMPUTE VALUE OF FUNCTION FOR SMALL CHANGE IN PARAMETER
+C    AND COMPUTE DERIVATIVE
+C
+C
+       call func (nbld,npoint, npblock,nparm,pbname,
+     1n2print,tb,bld,time1,time2,pb,ioparm,pp,
+     2dact,tempt)
+       DO 100 IP = 1,NPARM
+       DEL = PARM(IP)/50.
+       IF (DEL.EQ.0.) DEL = 1.0E-4
+       PP(IP) = PARM(IP) + DEL
+       CALL FUNC (NBLD, NPOINT, NPBLOCK, NPARM, PBNAME,
+     1N2PRINT, TB, BLD, TIME1, TIME2, PB, IOPARM, PP,
+     2dact1, TEMPT)
+        DO 50 J=1,NPOINT
+ 50     PF(IP,J) = (dact1(J)-dact(J))/DEL
+        PP(IP) = PARM(IP)
+ 100    CONTINUE
+C
+C
+C   COMPUTE MATRIX
+C   PF(TRANSPOSE) X PF
+C
+       DO 200 IP = 1,NPARM
+       DO 200 JP = 1,NPARM
+       TEMPD =0.
+       DO 150 I=1,NPOINT
+       DD = PF(IP,I)*PF(JP,I)*WEIGHTS(I)
+ 150   TEMPD = TEMPD + DD
+       AMAT(IP,JP)=TEMPD
+ 200   CONTINUE
+C      WRITE (luout,*)'VMAT', VMAT(1,1),VMAT(2,1),VMAT(1,2),VMAT(2,2)
+C
+C
+C   INVERT MATRIX
+C
+       CALL svdINV (nparm, amat,VMAT,DET)
+       IF (DET.EQ.0.) WRITE (LUerr,1207)
+        WRITE (luout,*) ' DETERMINANT OF FI MATRIX ',DET
+ 1207  FORMAT (' DET = 0. ')
+C
+C   COMPUTE SD OF PARAMETERS C
+C    MULTIPLICATION BY RMSE CORRECTS FOR DISCREPANCIES BETWEEN
+C    DATA AND EXPECTED FUNCTION
+C
+C
+        WRITE (11,1070)
+        DO 250 I=1,NPARM
+        SD(I) = DSQRT(VMAT(I,I))
+        SDD= RMSE*SD(I)
+        IF (PARM(I).NE.0.) THEN
+        RATIO =100.* SDD/PARM(I)
+        ELSE
+        RATIO =0.
+        ENDIF
+        WRITE (11,1071) PARM(I),SDD, RATIO
+ 250    CONTINUE
+ 1070  FORMAT (//' ',T12,'PARAMETER',T35,'SD',T46,'F D(%)')
+ 1071  FORMAT (2E20.6,F10.3)
+ 1077  FORMAT (//,T20,'CORRELATION MATRIX',//' COLUMN',10I6)
+ 1079  FORMAT (' ROW',I3,2X,10F6.2)
+       WRITE (11,1077)
+C
+C     COMPUTE AND WRITE CORRELATION COEFFICIENT MATRIX
+C
+       DO 350 I=1,NPARM
+       TEMP = SD(I)
+       DO 300 J=1,NPARM
+ 300   VMAT(I,J)=VMAT(I,J)/(TEMP*SD(J))
+       WRITE (11,1079) I,(VMAT(I,J),J=1,NPARM)
+ 350   CONTINUE
+C          WRITE (11,1082)SUMS,RMSE
+       RETURN
+        END
+
+      FUNCTION EXPTRAP(X)
+     0 DATA  XMIN, XMAX, EMIN, EMAX
+     1    / -70., 70., 0., 2.51544E 30 /
+      IF (X .LE. XMIN) GO TO 1
+      IF (X .GE. XMAX) GO TO 2
+      EXPTRAP = EXP(X)
+      RETURN
+  1   EXPTRAP = EMIN
+      RETURN
+  2   EXPTRAP = EMAX
+      RETURN
+      END
+c  *********************************************************
+c    compute response for model with q1(t) = Vb Ca(t);
+c    i. e., ignore effects of flow
+C    COMPUTE ONLY FOR COMPARTMENTS 2-3
+C    ****  Q1 MUST BE ADDED IN CALLING PROGRAM and multiply
+C    all terms (sum) by Vb  ******
+C    JOANNE MARKHAM
+C    JULY 1991
+c
+c      April 1997
+c      add checks for parameter values = 0 so 
+c     program can be used for simplier models
+c     perform preliminary computation in double precision
+c
+       subroutine fdgnf (n,t,rate,DECAY,QT)
+       double precision  xk21, xk02, xk32, xk23, xk22, sa, sb
+       double precision  temp,e1,e2 ,cona,conb
+       dimension t(2),rate(6),qt(2)
+       data luerr/6/
+       xk21 = rate(2)
+       xk02 = rate(3)
+       xk32 = rate(4)
+       xk23 =rate(5)
+       xk22 = xk02 + xk32
+       if (xk21 .eq. 0.) then
+       write (luerr, *) ' ERROR:  k21 (K1) = 0'
+       write (11, *) ' ERROR:  k21 (K1) = 0'
+       stop 4 
+	endif
+
+	if (xk02.eq.0.) go to 300
+	if (xk32.eq.0.) go to 400
+	if (xk23.eq. 0.) go to 500
+
+       sa = xk22 +xk23
+       sb = xk02 * xk23 
+       temp = dsqrt (sa*sa -4.0*sb)
+       e1 = 0.5*(sa + temp)
+       e2 = 0.5*(sa - temp)
+       cona = xk21/(e1-e2)
+       conb  = xk32 + xk23 
+       con1 = cona*(e1-conb)
+       con2 = cona*(conb -e2)
+       se1=e1
+       se2 = e2
+c       write (6,*) ' e1, e2 ', se1, se2
+c	write (6,*) ' con1, con2 ', con1, con2
+       do 100 i=1,n
+       tt = t(i)
+       exa = exptrap(-se2 *tt)
+       exb = exptrap(-se1* tt)
+       qt(i) = con1*exb + con2*exa
+100      continue
+
+	 go to 600
+300     continue
+c 
+c  model has one/tow compartments that is sink for
+c  input  -- solution is integral of input *k21
+c
+      do 320 i = 1,n
+      qt(i) = xk21
+320    continue
+	go to 600
+c
+c
+400    continue
+c
+c    model consist of one compartment with outflow
+c
+             do 420 i=1,n
+	       qt(i) = xk21 *exp(-xk22*t(i))
+420    continue
+        go to 600
+500     continue
+c
+c
+c  model  consists of 2 compartments without
+c   back transfer between them;
+c
+	 cona = xk21/xk22
+	 do 520 i = 1,n
+         qt(i) = cona *(xk32 + xk02 *exp(-xk22*t(i)))
+520      continue
+	 go to 600
+
+C
+C   CORRECT FOR DECAY IF NECESSARY
+C
+
+600       continue
+
+         IF (DECAY.EQ.0.) RETURN
+         RC = ALOG(2.0)/DECAY
+         DO 200 I=1,N
+         QT(I) = QT(I) *EXP(-RC*T(I))
+ 200     CONTINUE
+       return
+       end
+c                                                                               
+c    scale matrix then compute inverse                                          
+c     use  svd for matrix inversion                                             
+c    Double precision version                                                   
+c                                                                               
+c    joanne markham oct 1991                                                    
+c                                                                               
+       subroutine svdinv (n,a,b,det)                                            
+       double precision a(10,10),b(10,10),det,w(10),u(10,10),v(10,10),          
+     1diag(10),dtemp, tol2                                                            
+c                 
+       tol2 = 1.0d-30
+       do 10 i=1,n                                                              
+       if (a(i,i).lt.tol2 ) a(i,i) = tol2
+       diag(i)  = 1.0/sqrt (a(i,i) )                                            
+10     continue                                                                 
+                                                                                
+c                                                                               
+c   scale matrix                                                                
+c                                                                               
+        do 20 i =1,n                                                            
+	dtemp = diag(i)                                                                
+	do 20 j= 1,n                                                                   
+20      u(i,j) = a(i,j)*dtemp *diag(j)                                          
+c        write (6,*) ' d ',(diag(i),i=1,n)                                       
+c                                                                               
+c    for accuracy set diag elements to 1.                                       
+c                                                                               
+	do 30 i=1,n                                                                    
+30       u(i,i) =1.                                                             
+c                                                                               
+c   call svd                                                                    
+c                                                                               
+	call svdcmp ( u, n, n, 10,10,w,v)                                              
+c                                                                               
+c     check condition number and set small singular values to zero              
+c                                                                               
+         wmax =0.                                                               
+	 wmin = 999999.                                                                
+        det = 1.                                                                
+	do 50 i=1,n                                                                    
+         det = det *w(i)                                                        
+	 if (w(i) .gt. wmax)  wmax = w(i)                                              
+	 if (w(i) .lt. wmin) wmin = w(i)                                               
+50       continue                                                               
+         if (wmin.ne.0.) then                                                   
+	 cno = wmax /wmin                                                              
+	 write (6,*) ' condition no = ', cno                                           
+	 else                                                                          
+	 write (6,*)' det = 0. '                                                       
+         endif                                                                  
+	 tol =  wmax *1.0e-6                                                           
+c                                                                               
+c                                                                               
+c     compute inverse from u , w and v                                          
+c                                                                               
+c                                                                               
+           do 60 i=1,n                                                          
+	       if (w(i) .lt. tol) then                                                 
+	       w(i) = 0.                                                               
+	       else                                                                    
+                                                                                
+	       w(i) = 1.0/w(i)                                                         
+	       endif                                                                   
+60       continue                                                               
+                                                                                
+ 	 do 80 i= 1,n                                                                 
+	  do 80 j = 1, n                                                               
+          dtemp = 0.                                                            
+	  do 70 k = 1,n                                                                
+70       dtemp = dtemp + v(i,k)*u(j,k)*w(k)                                     
+c        write (6,1002) i, j, dtemp                                             
+	 b(i,j) = dtemp                                                                
+80        continue	                                                             
+1002      format (2i5,f20.6)                                                    
+c                                                                               
+c                                                                               
+c       scale matrix to yield inverse to original matrix                        
+c                                                                               
+c                                                                               
+	      do 100 i=1,n                                                             
+	      dtemp = diag(i)                                                          
+	      do 100 j= 1,n                                                            
+100	      b(i,j)= b(i,j) *dtemp*diag(j)                                         
+       	return                                                                  
+	 end                                                                           
+c                                                                               
+c                                                                               
+c    Singular value decomposition                                               
+c    page 60 of Numerical Recipes  (WH Press, BP Flannery, SA Teukolsky, and    
+c    WT Vetterling)   Cambridge University Press                                
+c                                                                               
+c    Joanne Markham  Oct 1991                                                   
+c                                                                               
+       Subroutine SVDCMP (A, M, N, MP, NP, W, V)                                
+c                                                                               
+c                                                                               
+c      INPUT:  A -  matrix of logical dimensions m x n and physical             
+c                   dimensions MP x NP  ** replaced by U on output)             
+c                                                                               
+c              M  - number of rows in A                                         
+c              N  - number of columns in A                                      
+c              MP - dimensions of array for storage of A                        
+c              NP -  "                                                          
+c      OUTPUT: A  -  matrix U                                                   
+c              W  -  vectors of diagonal elements of matrix W                   
+c              V  - matrix V                                                    
+c                                                                               
+c                                                                               
+	 double precision a, w, v,rv1,f,g,h,c,s,x,y,z,scale,anorm                      
+	 parameter (nmax =100)                                                         
+	 dimension a(mp, np),w(np),v(np,np),rv1 (nmax)                                 
+	 if (m.lt.n) then                                                              
+	 write (6,*)' error - m < n '                                                  
+	 stop 1                                                                        
+	 endif                                                                         
+	 g =0.                                                                         
+	 scale =0.                                                                     
+	 anorm=0.                                                                      
+	 do 25 i=1,n                                                                   
+	    l=i+1                                                                      
+	    rv1(i) = scale * g                                                         
+	    g = 0.                                                                     
+	    s =0.                                                                      
+	    scale =0.                                                                  
+	    if (i.le.m) then                                                           
+		do 11 k=i,m                                                                   
+	        scale = scale + dabs(a(k,i))                                           
+11     continue                                                                 
+	   if (scale.ne.0.) then                                                       
+	   do 12 k=i,m                                                                 
+	   a(k,i)=a(k,i)/scale                                                         
+	   s = s + a(k,i) *a(k,i)                                                      
+12    continue                                                                  
+	  f = a(i,i)                                                                   
+	  g = - sign(sqrt(s),f)                                                        
+	  h = f*g -s                                                                   
+	  a(i,i) = f-g                                                                 
+	  if (i.ne.n) then                                                             
+	  do 15 j = l,n                                                                
+	  s =0.                                                                        
+	    do 13 k=i,m                                                                
+	    s = s + a(k,i)*a(k,j)                                                      
+13      continue                                                                
+	  f=s/h                                                                        
+	  do 14 k=i,m                                                                  
+	  a(k,j)=a(k,j)+f*a(k,i)                                                       
+14     continue                                                                 
+15     continue                                                                 
+	      endif                                                                    
+	      do 16 k=i,m                                                              
+	      a(k,i) = scale*a(k,i)                                                    
+16    continue                                                                  
+       endif                                                                    
+       endif                                                                    
+       w(i) = scale*g                                                           
+       g =0.                                                                    
+       s =0.                                                                    
+       scale=0.                                                                 
+       if ((i.le.m) .and. (i.ne.n) ) then                                       
+       do 17 k=l,n                                                              
+       scale = scale + dabs(a(i,k))                                             
+17     continue                                                                 
+       if (scale.ne.0.0) then                                                   
+       do 18 k=l,n                                                              
+       a(i,k) = a(i,k)/scale                                                    
+       s = s+ a(i,k)*a(i,k)                                                     
+18     continue                                                                 
+       f=a(i,l)                                                                 
+       g = - sign(sqrt(s),f)                                                    
+       h = f*g -s                                                               
+       a(i,l) = f-g                                                             
+	  do 19 k = l,n                                                                
+	  rv1(k)=a(i,k)/h                                                              
+19       continue                                                               
+	  if (i.ne.m) then                                                             
+	  do 23 j=l,m                                                                  
+	  s =0.                                                                        
+	  do 21 k=l,n                                                                  
+          s = s+ a(j,k)*a(i,k)                                                  
+21     continue                                                                 
+          do 22 k = l,n                                                         
+	  a(j,k) = a(j,k) + s*rv1(k)                                                   
+22        continue                                                              
+23        continue                                                              
+	  endif                                                                        
+	  do 24 k=l,n                                                                  
+  	  a(i,k) = scale*a(i,k)                                                      
+24         continue                                                             
+          endif                                                                 
+	  endif                                                                        
+	  anorm = max(anorm, (dabs(w(i)) +dabs(rv1(I))))                               
+25        continue                                                              
+c                                                                               
+c  accumulation of right-hand transformations                                   
+c                                                                               
+	do 32 i = n,1,-1                                                               
+	if (i.lt.n) then                                                               
+	if (g.ne. 0.) then                                                             
+	do 26 j = l, n                                                                 
+	v(j,i) = (a(i,j)/a(i,l))/g                                                     
+26     continue                                                                 
+	 do 29 j=l,n                                                                   
+	 s =0.                                                                         
+	 do 27 k=l,n                                                                   
+	 s = s +a(i,k) *v(k,j)                                                         
+27       continue                                                               
+		do 28 k=l,n                                                                   
+		v(k,j)=v(k,j) + s*v(k,i)                                                      
+28    continue                                                                  
+29    continue                                                                  
+       endif                                                                    
+	  do 31 j = l,n                                                                
+	  v(i,j) =0.                                                                   
+	  v(j,i) =0.                                                                   
+31      continue                                                                
+	  endif                                                                        
+	   v(i,i) =1.                                                                  
+	   g = rv1(i)                                                                  
+	   l=i                                                                         
+32     continue                                                                 
+c                                                                               
+c    accumulation of left-hand transformations                                  
+c                                                                               
+c                                                                               
+       do 39 i = n,1,-1                                                         
+       l = i+1                                                                  
+       g = w(i)                                                                 
+       if (i.lt.n)then                                                          
+	      do 33 j=l,n                                                              
+	      a(i,j) = 0.                                                              
+33    continue                                                                  
+       endif                                                                    
+       if (g.ne.0.)then                                                         
+       g = 1.0/g                                                                
+       if (i.ne.n) then                                                         
+       do 36 j = l,n                                                            
+       s =0.                                                                    
+       do 34 k=l,m                                                              
+       s = s + a(k,i)*a(k,j)                                                    
+34     continue                                                                 
+       f= (s/a(i,i))*g                                                          
+	  do 35 k = i,m                                                                
+          a(k,j) =  a(k,j)+ f*a(k,i)                                            
+                                                                                
+35     continue                                                                 
+36     continue                                                                 
+	 endif                                                                         
+	 do 37 j = i,m                                                                 
+         a(j,i) = a(j,i)*g                                                      
+37        continue                                                              
+       else                                                                     
+	  do 38 j=i,m                                                                  
+38	  a(j,i) =0                                                                  
+          endif                                                                 
+	  a(i,i) = a(i,i) + 1.                                                         
+39        continue                                                              
+c                                                                               
+c   diagonalization of bidiagonal form                                          
+c                                                                               
+	do 49  k = n,1,-1                                                              
+	do 48 its = 1, 30                                                              
+	do 41 l  = k,1, -1                                                             
+	 nm = l-1                                                                      
+	 if ((dabs(rv1(l)) + anorm) .eq. anorm)go to 2                                 
+	 if ((dabs(w(nm)) + anorm) .eq. anorm) go to 1                                 
+41      continue                                                                
+1        c =0                                                                   
+	 s =1.                                                                         
+	 do 43 i=l,k                                                                   
+	  f = s * rv1(i)                                                               
+	  if ((dabs(f)+anorm) .ne. anorm) then                                         
+	   g= w(i)                                                                     
+	   h = sqrt (f*f + g*g)                                                        
+	   w(i) =h                                                                     
+	   h= 1.0/h                                                                    
+	   c = (g*h)                                                                   
+	   s = -(f*h)                                                                  
+	   do 42 j=1,m                                                                 
+	   y = a(j,nm)                                                                 
+	   z = a(j,i)                                                                  
+	   a(j,nm) = (y*c) + (z*s)                                                     
+	   a(j,i) = - (y*s) + z*c                                                      
+42       continue                                                               
+	      endif                                                                    
+43     continue                                                                 
+2        z = w(k)                                                               
+       if (l.eq.k) then                                                         
+       if (z.lt.0.) then                                                        
+       w(k) = -z                                                                
+       do 44 j = 1,n                                                            
+         v(j,k) = -v(j,k)                                                       
+44       continue                                                               
+       endif                                                                    
+       go to 3                                                                  
+       endif                                                                    
+       if (its.eq. 30) then                                                     
+       write (6,*) ' error - no convergence in 30 iterations'                   
+       stop 2                                                                   
+        endif                                                                   
+	x = w(l)                                                                       
+	nm = k-1                                                                       
+	y = w(nm)                                                                      
+	g = rv1(nm)                                                                    
+	h = rv1(k)                                                                     
+	f = ((y-z)*(y+z) + (g-h)*(g+h))/(2.0*h*y)                                      
+	g = sqrt (f*f +1.0)                                                            
+	f = ((x-z)*(x+z)+h*((y/(f+sign(g,f)))-h))/x                                    
+c                                                                               
+c  next qr transformation                                                       
+c                                                                               
+       c = 1.0                                                                  
+       s = 1.0                                                                  
+	do 47 j = l,nm                                                                 
+	i = j+1                                                                        
+	g = rv1(i)                                                                     
+	y = w(i)                                                                       
+	h = s*g                                                                        
+	g =c*g                                                                         
+	z = sqrt (f*f+h*h)                                                             
+	  rv1(j)=z                                                                     
+	  c = f/z                                                                      
+	  s = h/z                                                                      
+	  f = (x*c)+  (g*s)                                                            
+	  g =- (x*s) + (g*c)                                                           
+	  h = y*s                                                                      
+          y = y*c                                                               
+	  do 45 jj =1,n                                                                
+	  x = v(jj,j)                                                                  
+	  z = v(jj,i)                                                                  
+	  v(jj,j) = (x*c) +  (z*s)                                                     
+	  v(jj,i) = -(x*s) +z*c                                                        
+45      continue                                                                
+	  z = sqrt(f*f + h*h)                                                          
+	  w(j) = z                                                                     
+	  if (z.ne.0.)then                                                             
+	  z = 1.0/z                                                                    
+	  c = f*z                                                                      
+	  s = h*z                                                                      
+	  endif                                                                        
+	  f = (c*g) + (s*y)                                                            
+	  x = - (s*g) + (c*y)                                                          
+	  do 46 jj = 1,m                                                               
+	  y = a(jj,j)                                                                  
+	  z = a(jj,i)                                                                  
+	  a(jj,j)=(y*c) + (z*s)                                                        
+	  a(jj,i)=-(y*s) + (z*c)                                                       
+46         continue                                                             
+47       continue                                                               
+         rv1(l) =0.                                                             
+         rv1(k) = f                                                             
+         w(k) = x                                                               
+48     continue                                                                 
+3      continue                                                                 
+49     continue                                                                 
+       return                                                                   
+       end                                                                      
