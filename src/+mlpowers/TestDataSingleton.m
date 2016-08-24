@@ -40,15 +40,7 @@ classdef TestDataSingleton < mlpowers.StudyDataSingleton
  		function this = TestDataSingleton(varargin)
  			this = this@mlpowers.StudyDataSingleton(varargin{:});
             
-            [~,hn] = mlbash('hostname');
-            switch (strtrim(hn))
-                case {'innominate' 'innominate.local'}
-                    this.powersTrunk = fullfile(getenv('UNITTESTS'), 'powers', '');
-                case 'vertebral'
-                    this.powersTrunk = fullfile(getenv('UNITTESTS'), 'powers', '');
-                otherwise
-                    warning('mlpowers:unsupportedSwitchCase', 'TestDataSingleton.ctor.hn->%s is not supported', hn);
-            end
+            this.powersTrunk = fullfile(getenv('UNITTESTS'), 'powers', '');
             
             dt = mlsystem.DirTools(this.subjectsDir);
             fqdns = {};
