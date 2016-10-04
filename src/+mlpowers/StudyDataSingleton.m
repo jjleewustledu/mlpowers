@@ -9,31 +9,14 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
  	%% It was developed on Matlab 9.0.0.341360 (R2016a) for MACI64.
  	
 
-	properties (SetAccess = protected)
-        powersTrunk = fullfile(getenv('POWERS'), '')
-    end
-    
-	properties (Dependent)
-        subjectsDir
-    end
-    
-    methods %% GET
-        function g = get.subjectsDir(this)
-            g = fullfile(this.powersTrunk, 'np497', 'jjlee', '');
-        end
-    end
-
     methods (Static)
-        function this = instance(qualifier)
-            persistent instance_            
-            if (exist('qualifier','var'))
-                assert(ischar(qualifier));
-                if (strcmp(qualifier, 'initialize'))
-                    instance_ = [];
-                end
-            end            
+        function this  = instance(varargin)
+            persistent instance_         
+            if (~isempty(varargin))
+                instance_ = [];
+            end          
             if (isempty(instance_))
-                instance_ = mlpowers.StudyDataSingleton();
+                instance_ = mlpowers.StudyDataSingleton(varargin{:});
             end
             this = instance_;
         end
@@ -49,55 +32,82 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
             
             cd(pwd0);
         end
-        function        register(varargin)
-            %% REGISTER
-            %  @param []:  if this class' persistent instance
-            %  has not been registered, it will be registered via instance() call to the ctor; if it
-            %  has already been registered, it will not be re-registered.
-            %  @param ['initialize']:  any registrations made by the ctor will be repeated.
-            
-            mlpowers.StudyDataSingleton.instance(varargin{:});
+        function d     = subjectsDir
+            d = fullfile(getenv('POWERS'), 'np497', 'jjlee', '');
         end
     end
     
     methods
-        function loc  = loggingLocation(this, varargin)
-            ip = inputParser;
-            addParameter(ip, 'type', 'path', @(x) this.isLocationType(x));
-            parse(ip, varargin{:});
+        function        register(this, varargin)
+            %% REGISTER this class' persistent instance with mlpipeline.StudyDataSingletons
+            %  using the latter class' register methods.
+            %  @param key is any registration key stored by mlpipeline.StudyDataSingletons; default 'derdeyn'.
             
-            switch (ip.Results.type)
-                case 'folder'
-                    [~,loc] = fileparts(this.subjectsDir);
-                case 'path'
-                    loc = this.subjectsDir;
-                otherwise
-                    error('mlpipeline:insufficientSwitchCases', ...
-                          'StudyDataSingleton.loggingLocation.ip.Results.type->%s not recognized', ip.Results.type);
-            end
+            ip = inputParser;
+            addOptional(ip, 'key', 'powers', @ischar);
+            parse(ip, varargin{:});
+            mlpipeline.StudyDataSingletons.register(ip.Results.key, this);
+        end
+        function this = replaceSessionData(this, varargin)
+            %% REPLACESESSIONDATA
+            %  @param [parameter name,  parameter value, ...] as expected by mlpowers.SessionData are optional;
+            %  'studyData' and this are always internally supplied.
+            %  @returns this.
+
+            this.sessionDataComposite_ = mlpatterns.CellComposite({ ...
+                mlpowers.SessionData('studyData', this, varargin{:})});
         end
         function sess = sessionData(this, varargin)
             %% SESSIONDATA
-            %  @param parameter names and values expected by mlpowers.SessionData;
-            %  'studyData' and this are implicitly supplied.
-            %  @returns mlpowers.SessionData object
+            %  @param [parameter name,  parameter value, ...] as expected by mlpowers.SessionData are optional;
+            %  'studyData' and this are always internally supplied.
+            %  @returns for empty param:  mlpatterns.CellComposite object or it's first element when singleton, 
+            %  which are instances of mlpowers.SessionData.
+            %  @returns for non-empty param:  instance of mlpowers.SessionData corresponding to supplied params.
             
+            if (isempty(varargin))
+                sess = this.sessionDataComposite_;
+                if (1 == length(sess))
+                    sess = sess.get(1);
+                end
+                return
+            end
             sess = mlpowers.SessionData('studyData', this, varargin{:});
+        end
+        function f    = subjectsDirFqdns(this)
+            dt = mlsystem.DirTools(this.subjectsDir);
+            f = {};
+            for di = 1:length(dt.dns)
+                e = regexp(dt.dns{di}, 'M\d{3}', 'match');
+                if (~isempty(e))
+                    f = [f dt.fqdns(di)]; %#ok<AGROW>
+                end
+            end
         end 
-        
-        function f = fslFolder(~)
-            f = 'fsl';
+    end
+    
+    %% PROTECTED
+    
+	methods (Access = protected)
+ 		function this = StudyDataSingleton(varargin)
+ 			this = this@mlpipeline.StudyDataSingleton(varargin{:});
         end
-        function f = hdrinfoFolder(~)
-            f = 'pet';
+        function this = assignSessionDataCompositeFromPaths(this, varargin)
+            if (isempty(this.sessionDataComposite_))
+                for v = 1:length(varargin)
+                    if (ischar(varargin{v}) && isdir(varargin{v}))                    
+                        this.sessionDataComposite_ = ...
+                            this.sessionDataComposite_.add( ...
+                                mlpowers.SessionData('studyData', this, 'sessionPath', varargin{v}));
+                    end
+                end
+            end
         end
-        function f = mriFolder(~)
-            f = 'mri';
-        end
-        function f = petFolder(~)
-            f = 'pet';
-        end
-        
+    end
+    
+    %% DEPRECATED, HIDDEN
+    
+    methods (Hidden)          
         function fn = fdg_fn(~, sessDat, varargin)
             ip = inputParser;
             addOptional(ip, 'suff', '', @ischar);
@@ -127,38 +137,8 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
             addOptional(ip, 'suff', '', @ischar);
             parse(ip, varargin{:})
             fn = sprintf('%soo%i%s.4dfp.nii.gz', sessDat.sessionFolder, sessDat.snumber, ip.Results.suff);
-        end
-        function fn = petfov_fn(~, sessDat, varargin)
-            ip = inputParser;
-            addOptional(ip, 'suff', '', @ischar);
-            parse(ip, varargin{:})
-            fn = sprintf('%s_mprage%i_brainmask.nii.gz', sessDat.sessionFolder, sessDat.snumber, ip.Results.suff);
-        end
+        end 
     end
-    
-    %% PROTECTED
-    
-	methods (Access = protected)
- 		function this = StudyDataSingleton(varargin)
- 			this = this@mlpipeline.StudyDataSingleton(varargin{:});
-            
-            dt = mlsystem.DirTools(this.subjectsDir);
-            fqdns = {};
-            for di = 1:length(dt.dns)
-                if (strcmp(dt.dns{di}(1),   'p'))
-                    fqdns = [fqdns dt.fqdns(di)];
-                end
-            end
-            this.sessionDataComposite_ = ...
-                mlpatterns.CellComposite( ...
-                    cellfun(@(x) mlpowers.SessionData('studyData', this, 'sessionPath', x), ...
-                    fqdns, 'UniformOutput', false));            
-            this.registerThis;
-        end
-        function registerThis(this)
-            mlpipeline.StudyDataSingletons.register('powers', this);
-        end
-    end  
 
 	%  Created with Newcl by John J. Lee after newfcn by Frank Gonzalez-Morphy
  end
