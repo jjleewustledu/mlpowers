@@ -140,21 +140,21 @@ classdef SessionData < mlpet.SessionData
     
     methods (Hidden)
         function f = dta_fqfn(this)
-            f = fullfile(this.petLocation('path'), [this.pnumber 'fdg1.dta']);
+            f = fullfile(this.petLocation, [this.pnumber 'fdg1.dta']);
         end
         function f = fdg_fqfn(this, varargin)
             ip = inputParser;
             addOptional(ip, 'tag', '', @ischar);
             parse(ip, varargin{:})
             
-            f = this.fullfile(this.petLocation('path'), sprintf('%sfdg%s%s', this.sessionFolder, this.tag, ip.Results.tag));
+            f = this.fullfile(this.petLocation, sprintf('%sfdg%s%s', this.sessionFolder, this.tag, ip.Results.tag));
         end
         function f = ho_fqfn(this, varargin)
             ip = inputParser;
             addOptional(ip, 'tag', '', @ischar);
             parse(ip, varargin{:})
             
-            f = this.fullfile(this.petLocation('path'), sprintf('%sho%i%s%s', this.sessionFolder, this.snumber, this.tag, ip.Results.tag));
+            f = this.fullfile(this.petLocation, sprintf('%sho%i%s%s', this.sessionFolder, this.snumber, this.tag, ip.Results.tag));
         end
         function f = mpr_fqfn(this) %#ok<STOUT,MANU>
             error('mlpowers:notImplemented', 'SessionData.mpr_fqfn');
@@ -164,17 +164,17 @@ classdef SessionData < mlpet.SessionData
             addOptional(ip, 'tag', '', @ischar);
             parse(ip, varargin{:})
             
-            f = this.fullfile(this.petLocation('path'), sprintf('%soc%i%s%s', this.sessionFolder, this.snumber, this.tag, ip.Results.tag));
+            f = this.fullfile(this.petLocation, sprintf('%soc%i%s%s', this.sessionFolder, this.snumber, this.tag, ip.Results.tag));
         end
         function f = oo_fqfn(this, varargin)
             ip = inputParser;
             addOptional(ip, 'tag', '', @ischar);
             parse(ip, varargin{:})
             
-            f = this.fullfile(this.petLocation('path'), sprintf('%soo%i%s%s', this.sessionFolder, this.snumber, this.tag, ip.Results.tag));
+            f = this.fullfile(this.petLocation, sprintf('%soo%i%s%s', this.sessionFolder, this.snumber, this.tag, ip.Results.tag));
         end 
         function f = tsc_fqfn(this)
-            f = fullfile(this.petLocation('path'), [this.pnumber 'wb_fdg_pvc.tsc']);
+            f = fullfile(this.petLocation, [this.pnumber 'wb_fdg_pvc.tsc']);
         end
     end
     
