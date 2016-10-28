@@ -51,7 +51,7 @@ classdef SessionData < mlpet.SessionData
             %         'nac'         is logical
             %         'rnumber'     is numeric
             %         'sessionPath' is a path to the session data
-            %         'studyData'   is a mlpipeline.StudyDataSingleton
+            %         'studyData'   is a mlpipeline.StudyDataHandle
             %         'snumber'     is numeric
             %         'tracer'      is char
             %         'vnumber'     is numeric
