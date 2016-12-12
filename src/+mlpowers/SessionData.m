@@ -48,7 +48,7 @@ classdef SessionData < mlpet.SessionData
  		function this = SessionData(varargin)
  			%% SESSIONDATA
  			%  @param [param-name, param-value[, ...]]
-            %         'nac'         is logical
+            %         'ac'          is logical
             %         'rnumber'     is numeric
             %         'sessionPath' is a path to the session data
             %         'studyData'   is a mlpipeline.StudyDataHandle
@@ -58,7 +58,7 @@ classdef SessionData < mlpet.SessionData
             %         'tag'         is appended to the fileprefix
 
  			this = this@mlpet.SessionData(varargin{:});
-            this.nac_ = false;
+            this.ac_ = true;
             
             %% KLUDGE for v1
             pnums = {5999	6004	6012	6021	6042	6047	6146	6154	6169	6173	6189	6248	6253	6320	6324	6352	6354	6359	6374	6381	6389	6517	6606};
