@@ -25,7 +25,7 @@ classdef SessionData < mlpet.SessionData
     methods %% GET 
         function g = get.petBlur(~)
             g = mlpet.PETRegistry.instance.petPointSpread;
-            g = mean(g);
+            g = mean(g)*ones(1,3);
         end
         function v = get.v1(this)
             v = this.pnum2v1_(this.pnumber);
