@@ -33,7 +33,6 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractKinetics & mlkinetics.F18
         
         dta
         dtaNyquist
-        dtaOnTsc
         tsc
         tscNyquist
     end
@@ -229,7 +228,7 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractKinetics & mlkinetics.F18
             tinc  = t(2) - t(1);
             t     = [(t - tspan - tinc) t];   % prepend times
             conc  = [zeros(size(conc)) conc]; % prepend zeros
-            conc  = pchip(t, conc, t_ - Dt); % interpolate onto t shifted by Dt; Dt > 0 shifts to right
+            conc  = pchip(t, conc, t_ - Dt); % interpolate onto t shifted by Dt; Dt > 0 shifts to left
         end
     end
     
@@ -252,8 +251,6 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractKinetics & mlkinetics.F18
                 this.dta.times, this.dta.becquerels, this.tsc.times, this.tsc.becquerels);
             this.dtaNyquist  = struct('times', t, 'becquerels', dtaBecq1);
             this.tscNyquist  = struct('times', t, 'becquerels', tscBecq1);
-            this.dtaOnTsc         = struct('times', this.tsc.times, ...
-                                           'becquerels', pchip(this.dta.times, this.dta.becquerels, this.tsc.times));
             
             this.expectedBestFitParams_ = ...
                 [this.fu this.k1 this.k2 this.k3 this.k4 this.u0 this.v1]';
