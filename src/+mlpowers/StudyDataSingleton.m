@@ -9,6 +9,10 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
  	%% It was developed on Matlab 9.0.0.341360 (R2016a) for MACI64.
  	
 
+    properties
+        sessionFolderRegexp = 'p\d{4}' % 'M\d{3}'
+    end
+    
     methods (Static)
         function this  = instance(varargin)
             persistent instance_         
@@ -78,7 +82,7 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
             dt = mlsystem.DirTools(this.subjectsDir);
             f = {};
             for di = 1:length(dt.dns)
-                e = regexp(dt.dns{di}, 'M\d{3}', 'match');
+                e = regexp(dt.dns{di}, this.sessionFolderRegexp, 'match');
                 if (~isempty(e))
                     f = [f dt.fqdns(di)]; %#ok<AGROW>
                 end
