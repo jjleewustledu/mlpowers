@@ -40,7 +40,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             dth    = mlsystem.DirTool(ip.Results.dirToolArg);
             hcts   = ip.Results.hcts;
             jobs   = {};
-            if (hostnameMatch('innominate'))
+            if (hostnameMatch('ophthalmic'))
                 c = parcluster('chpc_remote_r2016b');
             elseif (hostnameMatch('william'))
                 c = parcluster('chpc_remote_r2016a');
@@ -85,7 +85,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             pwd0   = pushd(studyd.subjectsDir);
             dth    = mlsystem.DirTool('HYGLY2*');
             jobs   = {};
-            if (hostnameMatch('innominate'))
+            if (hostnameMatch('ophthalmic'))
                 c = parcluster('chpc_remote_r2016b');
             elseif (hostnameMatch('william'))
                 c = parcluster('chpc_remote_r2016a');
@@ -159,14 +159,16 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             studyd = StudyDataSingleton.instance('initialize');
             pwd0   = pushd(studyd.subjectsDir);
             iter   = studyd.createIteratorForSessionData;
-            fp     = fullfile(pwd0, sprintf('mlpowers_FDGKineticsWholebrain_goWritetable_%s', datestr(now, 30)));
+            fqfp   = fullfile(pwd0, sprintf('mlpowers_FDGKineticsWholebrain_goWritetable_%s', datestr(now, 30)));
             v      = 0;
             while (iter.hasNext)
                 v = v + 1;
                 try
                     sessd = iter.next;
-                    this = FDGKineticsWholebrain(sessd, 'mask', '');
-                    this.writetable('fileprefix', fp, 'Range', sprintf('A%i:U%i', v, v), 'writeHeader', 1==v);
+                    pwd1 = pushd(sessd.sessionPath);
+                    this = FDGKineticsWholebrain.load('mlpowers_FDGKineticsWholebrain_wholebrain.mat');
+                    this.writetable('fqfp', fqfp, 'Range', sprintf('A%i:U%i', v+2, v+2), 'writeHeader', 1==v);
+                    popd(pwd1);
                 catch ME
                     handwarning(ME);
                 end

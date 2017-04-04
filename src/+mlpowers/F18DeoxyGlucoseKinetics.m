@@ -14,8 +14,6 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
         notes = ''
         xLabel = 'times/s'
         yLabel = 'activity'
-        
-        hct
     end
     
     methods (Static)
@@ -57,13 +55,15 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
             this.k4 = this.sessionData.k4;            
         end
         
-        function tsc  = prepareTsc(this)
+        function this = prepareTsc(this)
             tsc = mlpet.TSC.import(this.sessionData.tsc_fqfn);
+            this.tsc_ = tsc;
         end
-        function dta  = prepareDta(this)
+        function this = prepareDta(this)
             dta = mlpet.DTA.loadSessionData(this.sessionData);
             dta.scannerData = this.tsc; %% KLUDGE
             dta.specificActivity = mlpowers.F18DeoxyGlucoseKinetics.wb2plasma(dta.specificActivity, this.hct, dta.times);
+            this.dta_ = dta;
         end   
         function this = simulateItsMcmc(this)
             this = mlpowers.F18DeoxyGlucoseKinetics.simulateMcmc( ...
