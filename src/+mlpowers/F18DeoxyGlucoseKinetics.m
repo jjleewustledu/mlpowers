@@ -43,7 +43,7 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
     end
     
 	methods
- 		function this  = F18DeoxyGlucoseKinetics(varargin)
+ 		function this = F18DeoxyGlucoseKinetics(varargin)
  			%% F18DEOXYGLUCOSEKINETICS
  			%  Usage:  this = F18DeoxyGlucoseKinetics() 			
  			
@@ -62,7 +62,6 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
         function this = prepareDta(this)
             dta = mlpet.DTA.loadSessionData(this.sessionData);
             dta.scannerData = this.tsc; %% KLUDGE
-            dta.specificActivity = mlpowers.F18DeoxyGlucoseKinetics.wb2plasma(dta.specificActivity, this.hct, dta.times);
             this.dta_ = dta;
         end   
         function this = simulateItsMcmc(this)
