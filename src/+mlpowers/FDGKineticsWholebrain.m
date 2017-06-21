@@ -236,7 +236,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
         function [m,n] = mskt(sessd)
             import mlfourdfp.*;
             f = [sessd.tracerResolved1('typ','fqfp') '_sumt'];
-            f1 = mybasename(FourdfpVisitor.ensureSafeOn(f));
+            f1 = mybasename(FourdfpVisitor.ensureSafeFileprefix(f));
             if (lexist([f1 '_mskt.4dfp.ifh'], 'file') && lexist([f1 '_msktNorm.4dfp.ifh'], 'file'))
                 m = mlfourd.ImagingContext([f1 '_mskt.4dfp.ifh']);
                 n = mlfourd.ImagingContext([f1 '_msktNorm.4dfp.ifh']);
