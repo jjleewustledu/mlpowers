@@ -82,7 +82,7 @@ classdef Test_F18DeoxyGlucoseKinetics < matlab.unittest.TestCase
             cd(this.sessionData.sessionPath);
             this = mlpowers.F18DeoxyGlucoseKinetics(this.sessionData, 'mask', []);
             dta  = this.dta;
-            dtaNyq = this.dtaNyquist;
+            dtaNyq = this.arterialNyquist;
             figure;
             plot(dta.times, dta.specificActivity, dtaNyq.times, dtaNyq.specificActivity);
         end
@@ -90,7 +90,7 @@ classdef Test_F18DeoxyGlucoseKinetics < matlab.unittest.TestCase
             cd(this.sessionData.sessionPath);
             this = mlpowers.F18DeoxyGlucoseKinetics(this.sessionData, 'mask', []);
             tsc  = this.tsc;
-            tscNyq = this.tscNyquist;
+            tscNyq = this.scannerNyquist;
             figure;
             plot(tsc.times, tsc.specificActivity, tscNyq.times, tscNyq.specificActivity);
         end

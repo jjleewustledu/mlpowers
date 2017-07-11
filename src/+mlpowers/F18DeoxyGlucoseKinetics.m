@@ -55,20 +55,20 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
             this.k4 = this.sessionData.k4;            
         end
         
-        function this = prepareTsc(this)
+        function this = prepareScannerData(this)
             tsc = mlpet.TSC.import(this.sessionData.tsc_fqfn);
             this.tsc_ = tsc;
         end
-        function this = prepareDta(this)
+        function this = prepareArterialData(this)
             dta = mlpet.DTA.loadSessionData(this.sessionData);
             dta.scannerData = this.tsc; %% KLUDGE
             this.dta_ = dta;
         end   
         function this = simulateItsMcmc(this)
             this = mlpowers.F18DeoxyGlucoseKinetics.simulateMcmc( ...
-                   this.dtaNyquist.specificActivity, ...
+                   this.arterialNyquist.specificActivity, ...
                    this.fu, this.k1, this.k2, this.k3, this.k4, ...
-                   this.dtaNyquist.times, this.u0, this.v1, this.mapParams);
+                   this.arterialNyquist.times, this.u0, this.v1, this.mapParams);
         end
         
  	end 
