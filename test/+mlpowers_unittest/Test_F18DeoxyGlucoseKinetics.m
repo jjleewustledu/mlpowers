@@ -37,8 +37,8 @@ classdef Test_F18DeoxyGlucoseKinetics < matlab.unittest.TestCase
             fprintf('%s\n', char(this.logging));
             this.plot;
         end
-		function test_godo(this)
-            this = mlpowers.F18DeoxyGlucoseKinetics.godo(this.sessionData);            
+		function test_doBayes(this)
+            this = mlpowers.F18DeoxyGlucoseKinetics.doBayes(this.sessionData);            
             this.verifyEqual(this.summary.kmin, [2.0750 0.12 0.11595 0.015307], 'RelTol', 1e-1);
             this.verifyEqual(this.summary.chi, 1.0197, 'RelTol', 2e-1);
             this.verifyEqual(this.summary.Kd, 7.0549, 'RelTol', 3e-1);

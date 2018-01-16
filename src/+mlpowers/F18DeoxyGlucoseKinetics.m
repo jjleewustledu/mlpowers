@@ -20,13 +20,13 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
         function this = godo(sessd)
             cd(sessd.sessionPath);
             this = mlpowers.F18DeoxyGlucoseKinetics(sessd, 'mask', []);
-            [this,lg] = this.doBayes;
+            [this,lg] = this.doItsBayes;
             fprintf('%s\n', char(lg));
         end
         function this = godoQuietly(sessd)
             cd(sessd.sessionPath);
             this = mlpowers.F18DeoxyGlucoseKinetics(sessd, 'mask', []);
-            this = this.doBayesQuietly;
+            this = this.doItsBayesQuietly;
         end
 
         function this = simulateMcmc(Aa, fu, k1, k2, k3, k4, t, u0, v1, mapParams)
@@ -37,7 +37,7 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
             tsc_ = struct('times', t, 'specificActivity', qpet);
             this = F18DeoxyGlucoseKinetics(sessd, 'hct', 40, 'dta', dta_, 'tsc', tsc_);
             this.mapParams = mapParams;
-            [this,lg] = this.doBayes;
+            [this,lg] = this.doItsBayes;
             fprintf('%s\n', char(lg));
         end
     end
@@ -59,7 +59,7 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
             tsc = mlpet.TSC.import(this.sessionData.tsc_fqfn);
             this.tsc_ = tsc;
         end
-        function this = prepareArterialData(this)
+        function this = prepareAifData(this)
             dta = mlpet.DTA.loadSessionData(this.sessionData);
             dta.scannerData = this.tsc; %% KLUDGE
             this.dta_ = dta;

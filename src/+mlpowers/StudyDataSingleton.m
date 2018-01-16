@@ -109,7 +109,8 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
         end
     end
     
-    %% DEPRECATED, HIDDEN
+    %% HIDDEN
+    %  @deprecated
     
     methods (Hidden)          
         function fn = fdg_fn(~, sessDat, varargin)

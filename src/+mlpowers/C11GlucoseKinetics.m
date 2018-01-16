@@ -116,9 +116,9 @@ classdef C11GlucoseKinetics < mlbayesian.AbstractMcmcProblem
             else
                 tsc_ = TSC.import(tscFqfn, 2);
             end                
-            figure; plot(dta_.times, dta_.wellCounts, tsc_.times, tsc_.becquerels);
+            figure; plot(dta_.times, dta_.wellCounts, tsc_.times, tsc_.activity);
             
-            this = C11GlucoseKinetics(tsc_.times, tsc_.becquerels, dta_, mnum, 1, 'Region', ip.Reults.region, 'GluTxlsx', GluTxlsxMacaque);
+            this = C11GlucoseKinetics(tsc_.times, tsc_.activity, dta_, mnum, 1, 'Region', ip.Reults.region, 'GluTxlsx', GluTxlsxMacaque);
             this.k04 = ip.Reults.ks.k04;
             if (isfield(ip.Reults.ks, 'k12frac'))
                 this.k12frac = ip.Reults.ks.k12frac;
@@ -154,7 +154,7 @@ classdef C11GlucoseKinetics < mlbayesian.AbstractMcmcProblem
             dta_ = DTA.load(dtaFqfn);
             tsc_ = TSC.import(tscFqfn);          
             %figure; plot(timeInterp, Ca_, timeInterp, Q_)            
-            kmp = mlpowers.C11GlucoseKinetics(tsc_.times, tsc_.becquerels, dta_, pnum, snum);
+            kmp = mlpowers.C11GlucoseKinetics(tsc_.times, tsc_.activity, dta_, pnum, snum);
             
             fprintf('C11GlucoseKinetics.run.pth -> %s\n', pth);
             fprintf('C11GlucoseKinetics.run.snum -> %i\n', snum);
@@ -182,8 +182,8 @@ classdef C11GlucoseKinetics < mlbayesian.AbstractMcmcProblem
             else
                 tsc_ = TSC.import(tscFqfn, 2);
             end                
-            %figure; plot(dta_.timeInterpolants, dta_.wellCountInterpolants, tsc_.times, tsc_.becquerels);
-            kmp  = C11GlucoseKinetics(tsc_.times, tsc_.becquerels, dta_, mnum, 1, 'Region', region, 'GluTxlsx', GluTxlsxMacaque);
+            %figure; plot(dta_.timeInterpolants, dta_.wellCountInterpolants, tsc_.times, tsc_.activity);
+            kmp  = C11GlucoseKinetics(tsc_.times, tsc_.activity, dta_, mnum, 1, 'Region', region, 'GluTxlsx', GluTxlsxMacaque);
             
             fprintf('C11GlucoseKinetics.runMacaque.pth -> %s\n', pth);
             disp(dta_)
@@ -205,7 +205,7 @@ classdef C11GlucoseKinetics < mlbayesian.AbstractMcmcProblem
             %figure; plot(timeInterp, Ca_, timeInterp, Q_)
             kmp  = mlpowers.C11GlucoseKinetics( ...
                 tsc_.timeInterpolants(1:len), ...
-                tsc_.becquerelInterpolants(1:len), ...
+                tsc_.activityInterpolants(1:len), ...
                 dta_, ...
                 str2pnum(pth), snum, 'Region', region);
             

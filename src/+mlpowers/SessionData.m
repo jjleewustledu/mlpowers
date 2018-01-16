@@ -150,7 +150,8 @@ classdef SessionData < mlpet.SessionData
         pnum2hct_
     end
     
-    %% DEPRECATED, HIDDEN
+    %% HIDDEN
+    %  @deprecated
     
     methods (Hidden)
         function a = aparcAsegBinarized(~, varargin)

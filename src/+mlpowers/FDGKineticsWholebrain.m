@@ -180,8 +180,8 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
                 import mlpowers.*;
                 pwd0 = pushd(sessd.sessionPath);
                 this = FDGKineticsWholebrain(sessd, 'mask', []);
-                summary.(sessd.sessionFolder) = this.doBayes;
-                fprintf('FDGKineticsWholebrain.godo2:  returned from doBayes\n');
+                summary.(sessd.sessionFolder) = this.doItsBayes;
+                fprintf('FDGKineticsWholebrain.godo2:  returned from doItsBayes\n');
                 popd(pwd0);
             catch ME
                 fprintf('%s\n', ME.identifier);
@@ -197,7 +197,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
                 assert(isdir(sessd.vLocation));
                 pwd0 = pushd(sessd.vLocation);
                 this = FDGKineticsWholebrain(sessd, 'mask', m);
-                state = this.doBayes;
+                state = this.doItsBayes;
                 popd(pwd0);
             catch ME
                 handwarning(ME);
@@ -210,7 +210,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
                 pwd0 = pushd(sessd.vLocation);
                 this = FDGKineticsWholebrain.load( ...
                     fullfile(sessd.vLocation, sprintf('mlpowers_FDGKineticsWholebrain_%s', sessd.parcellation)), 'this');
-                this.plotAll;
+                this.plot;
                 saveFigures(sprintf('fig_%s_wholebrain', strrep(class(this), '.','_')));
                 popd(pwd0);
             catch ME
