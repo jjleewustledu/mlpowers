@@ -137,6 +137,10 @@ classdef SessionData < mlpet.SessionData
         function p = petPointSpread(~)
             p = mlpet.PETRegistry.instance.petPointSpread;
         end
+        function [dt0_,date_] = readDatetime0(~)
+            dt0_ = datetime;
+            date_ = datetime(dt0_.Year, dt0_.Month, dt0_.Day);
+        end
     end 
     
     %% PRIVATE

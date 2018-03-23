@@ -10,7 +10,8 @@ classdef F18DeoxyGlucoseKinetics < mlkinetics.AbstractF18DeoxyGlucoseKinetics
  	
 
 	properties
-        LC = 1 % Huang 1980
+        LC = 0.64 % Powers, et al., JCBFM 31(5) 1223-1228, 2011.
+        %LC = 1 % Huang 1980
         notes = ''
         xLabel = 'times/s'
         yLabel = 'activity'

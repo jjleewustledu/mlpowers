@@ -12,6 +12,8 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
 	properties (Constant)
         REUSE_APARCASEG = true
  		REUSE_BRAINMASK = true
+        HCTS = [35.7 33.6 33.4 34.5 41.4; ...
+                31.3 32.5 34.6 34.5 37.2];
  	end
 
 	methods
@@ -40,17 +42,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             dth    = mlsystem.DirTool(ip.Results.dirToolArg);
             hcts   = ip.Results.hcts;
             jobs   = {};
-            if (hostnameMatch('ophthalmic'))
-                c = parcluster('chpc_remote_r2016b');
-            elseif (hostnameMatch('william'))
-                c = parcluster('chpc_remote_r2016a');
-            else
-                error('mlpowers:unsupportedHost', 'FDGKineticsWholebrain.godoChpc.hostname->%s', hostname);
-            end
-            ClusterInfo.setEmailAddress('jjlee.wustl.edu@gmail.com');
-            ClusterInfo.setMemUsage('32000');
-            ClusterInfo.setWallTime('02:00:00');
-            %ClusterInfo.setPrivateKeyFile('~/id_rsa.pem');
+            c      = myparcluster;
             for d = 1:length(dth.dns)
                 datobj.sessionFolder = dth.dns{d};
                 for v = ip.Results.vs
@@ -63,54 +55,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
                         jobs = [jobs j]; %#ok<AGROW>
                         popd(pwd1);
                     catch ME
-                        disp(ME);
-                        struct2str(ME.stack);
-                        handwarning(ME);                        
-                    end
-                end
-            end
-            popd(pwd0);
-            
-            diary off
-        end
-        function jobs = godoChpc
-            
-            diary on
-            
-            hcts = [35.7 33.6 33.4 34.5 41.4; ...
-                    31.3 32.5 34.6 34.5 37.2];
-                
-            import mlpowers.*;
-            studyd = StudyData;
-            pwd0   = pushd(studyd.subjectsDir);
-            dth    = mlsystem.DirTool('HYGLY2*');
-            jobs   = {};
-            if (hostnameMatch('ophthalmic'))
-                c = parcluster('chpc_remote_r2016b');
-            elseif (hostnameMatch('william'))
-                c = parcluster('chpc_remote_r2016a');
-            else
-                error('mlpowers:unsupportedHost', 'FDGKineticsWholebrain.godoChpc.hostname->%s', hostname);
-            end
-            ClusterInfo.setEmailAddress('jjlee.wustl.edu@gmail.com');
-            ClusterInfo.setMemUsage('32000');
-            ClusterInfo.setWallTime('02:00:00');
-            %ClusterInfo.setPrivateKeyFile('~/id_rsa.pem');
-            for d = 1:length(dth.dns)
-                datobj.sessionFolder = dth.dns{d};
-                for v = 1:2
-                    datobj.vnumber = v;
-                    datobj.hct = hcts(v,d);
-                    try
-                        pwd1 = pushd(fullfile(dth.dns{d}, sprintf('V%i', v), ''));
-                        %CHPC.pushToChpc(datobj);
-                        j = c.batch(@mlpowers.FDGKineticsWholebrain.godo3, 1, {datobj});
-                        jobs = [jobs j]; %#ok<AGROW>
-                        popd(pwd1);
-                    catch ME
-                        disp(ME);
-                        struct2str(ME.stack);
-                        handwarning(ME);
+                        dispwarning(ME);                        
                     end
                 end
             end
@@ -184,10 +129,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
                 fprintf('FDGKineticsWholebrain.godo2:  returned from doItsBayes\n');
                 popd(pwd0);
             catch ME
-                fprintf('%s\n', ME.identifier);
-                fprintf('%s\n', ME.message);
-                fprintf('%s\n', struct2str(ME.stack));
-                handwarning(ME);
+                dispwarning(ME);
             end
         end
         function state = godo(sessd)
