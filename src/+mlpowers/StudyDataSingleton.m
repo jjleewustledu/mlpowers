@@ -1,4 +1,4 @@
-classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
+classdef StudyDataSingleton < handle & mlpipeline.StudyDataSingleton
 	%% STUDYDATASINGLETON  
 
 	%  $Revision$
@@ -11,6 +11,10 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
 
     properties
         sessionFolderRegexp = 'p\d{4}' % 'M\d{3}'
+    end
+    
+    properties (Dependent)
+        subjectsDir
     end
     
     methods (Static)
@@ -36,12 +40,18 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
             
             cd(pwd0);
         end
-        function d     = subjectsDir
-            d = fullfile(getenv('POWERS'), 'np497', 'jjlee', '');
-        end
     end
     
     methods
+        
+        %% GET
+        
+        function d     = get.subjectsDir(this)
+            d = fullfile(getenv('POWERS'), 'np497', 'jjlee', '');
+        end
+        
+        %%
+        
         function        register(this, varargin)
             %% REGISTER this class' persistent instance with mlpipeline.StudyDataSingletons
             %  using the latter class' register methods.
@@ -60,23 +70,6 @@ classdef StudyDataSingleton < mlpipeline.StudyDataSingleton
 
             this.sessionDataComposite_ = mlpatterns.CellComposite({ ...
                 mlpowers.SessionData('studyData', this, varargin{:})});
-        end
-        function sess = sessionData(this, varargin)
-            %% SESSIONDATA
-            %  @param [parameter name,  parameter value, ...] as expected by mlpowers.SessionData are optional;
-            %  'studyData' and this are always internally supplied.
-            %  @returns for empty param:  mlpatterns.CellComposite object or it's first element when singleton, 
-            %  which are instances of mlpowers.SessionData.
-            %  @returns for non-empty param:  instance of mlpowers.SessionData corresponding to supplied params.
-            
-            if (isempty(varargin))
-                sess = this.sessionDataComposite_;
-                if (1 == length(sess))
-                    sess = sess.get(1);
-                end
-                return
-            end
-            sess = mlpowers.SessionData('studyData', this, varargin{:});
         end
         function f    = subjectsDirFqdns(this)
             dt = mlsystem.DirTools(this.subjectsDir);

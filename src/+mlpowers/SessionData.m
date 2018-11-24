@@ -1,4 +1,4 @@
-classdef SessionData < mlpet.SessionData
+classdef SessionData < mlpipeline.SessionData
 	%% SESSIONDATA  
 
 	%  $Revision$
@@ -15,6 +15,7 @@ classdef SessionData < mlpet.SessionData
     
 	properties (Dependent)
         petBlur
+        petTarget
         v1
         k1
         k2
@@ -23,7 +24,17 @@ classdef SessionData < mlpet.SessionData
         hct
     end
     
-    methods %% GET 
+    methods 
+        
+        %% GET, SET
+        
+        function g = get.petTarget(this)
+            g = this.petTarget_;
+        end
+        function this = set.petTarget(this, s)
+            assert(ischar(s));
+            [~,this.petTarget_] = fileparts(lower(s));
+        end
         function g = get.petBlur(~)
             g = mlpet.PETRegistry.instance.petPointSpread;
             g = mean(g)*ones(1,3);
@@ -49,19 +60,102 @@ classdef SessionData < mlpet.SessionData
     end
 
 	methods
+        %% IMRData
+        
+        function g = mpr(this)
+            g = this.flipAndCropImaging(mlmr.MRImagingContext(this.mpr_fqfn));
+        end
+                
+        %% IPETData
+		  
+        function fp = analyzeFileprefix(~, fn)
+            [~,fp] = myfileparts(fn);
+            names = regexp(fp, '(?<fp>[\w-]+)_\d\d', 'names');
+            fp = names.fp;
+        end
+        function g = fdg(this)
+            import mlpet.*;
+            if (lexist(this.fdg_fqfn('_resolved')))
+                g = PETImagingContext(this.fdg_fqfn('_resolved'));
+                return
+            end
+            g = this.flipAndCropImaging(PETImagingContext(this.fdg_fqfn));
+        end
+        function this = fslmerge_t(this)
+            pwd0 = pwd;
+            cd(this.petPath);
+            import mlsystem.*;
+            frames = DirTool('*_frames');
+            s = 0; r = '';
+            for f = 1:frames.length
+                cd(frames.fqdns{f});
+                hdrs = DirTool('*.hdr');
+                if (hdrs.length > 0)
+                    fp = this.analyzeFileprefix(hdrs.fns{1});
+                    if (~lexist(fullfile(frames.fqdns{f}, [fp '.nii.gz']), 'file') && ...
+                        ~lexist(fullfile(this.petPath,    [fp '.nii.gz']), 'file'))
+                        try
+                            [s,r] = mlbash(sprintf('fslmerge -t %s %s_*.hdr', fp, fp));
+                            [s,r] = mlbash(sprintf('mv -f %s.nii.gz  %s', fp, this.petPath));
+                            [s,r] = mlbash(sprintf('mv -f %s.img.rec %s', fp, this.petPath));
+                        catch ME
+                            handwarning(ME);
+                            fprintf('mlpet.SessionData.fslmerge_t:  s->%i, r->%s\n', s, r);
+                        end
+                    end
+                end
+                
+            end
+            cd(pwd0);
+        end
+        function g = ho(this)
+            import mlpet.*;
+            if (lexist(this.ho_fqfn('_resolved')))
+                g = PETImagingContext(this.ho_fqfn('_resolved'));
+                return
+            end
+            g = this.flipAndCropImaging(PETImagingContext(this.ho_fqfn));
+        end
+        function g = oc(this)
+            import mlpet.*;
+            if (lexist(this.oc_fqfn('_resolved')))
+                g = PETImagingContext(this.oc_fqfn('_resolved'));
+                return
+            end
+            g = this.flipAndCropImaging(PETImagingContext(this.oc_fqfn));
+        end
+        function g = oo(this)
+            import mlpet.*;
+            if (lexist(this.oo_fqfn('_resolved')))
+                g = PETImagingContext(this.oo_fqfn('_resolved'));
+                return
+            end
+            g = this.flipAndCropImaging(PETImagingContext(this.oo_fqfn));
+        end   
+        function loc = petLocation(this, varargin)
+            loc = fullfile(this.vLocation(varargin{:}), 'pet', '');
+        end
+        function p = petPointSpread(~)
+            p = mlpet.PETRegistry.instance.petPointSpread;
+        end
+        function [dt0_,date_] = readDatetime0(~)
+            dt0_ = datetime;
+            date_ = datetime(dt0_.Year, dt0_.Month, dt0_.Day);
+        end
+        
  		function this = SessionData(varargin)
  			%% SESSIONDATA
  			%  @param [param-name, param-value[, ...]]
             %         'ac'          is logical
             %         'rnumber'     is numeric
             %         'sessionPath' is a path to the session data
-            %         'studyData'   is a mlpipeline.StudyDataHandle
+            %         'studyData'   is a mlpipeline.IStudyHandle
             %         'snumber'     is numeric
             %         'tracer'      is char
             %         'vnumber'     is numeric
             %         'tag'         is appended to the fileprefix
 
- 			this = this@mlpet.SessionData(varargin{:});
+ 			this = this@mlpipeline.SessionData(varargin{:});
             this.attenuationCorrected_ = true;
             
             %% KLUDGE for v1
@@ -89,63 +183,13 @@ classdef SessionData < mlpet.SessionData
             this.pnum2hct_ = containers.Map(pnums, hcts);
             
             this.parcellation = 'wholebrain';
-        end
-        
-        %% IMRData
-        
-        function g = mpr(this)
-            g = this.flipAndCropImaging(mlmr.MRImagingContext(this.mpr_fqfn));
-        end
-                
-        %% IPETData
-		  
-        function loc = petLocation(this, varargin)
-            loc = fullfile(this.vLocation(varargin{:}), 'pet', '');
-        end
-        function g = fdg(this)
-            import mlpet.*;
-            if (lexist(this.fdg_fqfn('_resolved')))
-                g = PETImagingContext(this.fdg_fqfn('_resolved'));
-                return
-            end
-            g = this.flipAndCropImaging(PETImagingContext(this.fdg_fqfn));
-        end
-        function g = ho(this)
-            import mlpet.*;
-            if (lexist(this.ho_fqfn('_resolved')))
-                g = PETImagingContext(this.ho_fqfn('_resolved'));
-                return
-            end
-            g = this.flipAndCropImaging(PETImagingContext(this.ho_fqfn));
-        end
-        function g = oc(this)
-            import mlpet.*;
-            if (lexist(this.oc_fqfn('_resolved')))
-                g = PETImagingContext(this.oc_fqfn('_resolved'));
-                return
-            end
-            g = this.flipAndCropImaging(PETImagingContext(this.oc_fqfn));
-        end
-        function g = oo(this)
-            import mlpet.*;
-            if (lexist(this.oo_fqfn('_resolved')))
-                g = PETImagingContext(this.oo_fqfn('_resolved'));
-                return
-            end
-            g = this.flipAndCropImaging(PETImagingContext(this.oo_fqfn));
-        end   
-        function p = petPointSpread(~)
-            p = mlpet.PETRegistry.instance.petPointSpread;
-        end
-        function [dt0_,date_] = readDatetime0(~)
-            dt0_ = datetime;
-            date_ = datetime(dt0_.Year, dt0_.Month, dt0_.Day);
-        end
+        end        
     end 
     
     %% PRIVATE
     
     properties (Access = private)
+        petTarget_
         pnum2v1_
         pnum2k1_
         pnum2k2_
