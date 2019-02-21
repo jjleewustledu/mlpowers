@@ -193,7 +193,7 @@ classdef SessionData < mlpipeline.SessionData
             niid = ic.niftid;
             niid.img = flip(niid.img, dim);
             niid = niid.append_fileprefix(sprintf('_flip%i', dim));
-            ic = mlfourd.ImagingContext.recastImagingContext(niid, class(ic));
+            ic = mlfourd.ImagingContext2(niid);
         end
         function ic = flipAndCropImaging(ic, varargin)
             ip = inputParser;
@@ -220,7 +220,7 @@ classdef SessionData < mlpipeline.SessionData
                 niid.fileprefix = niid.fileprefix(1:strfind(niid.fileprefix, '.4dfp')-1);
             end
             niid = niid.append_fileprefix(sprintf('_flip%i_crop', ip.Results.flipdim));
-            ic = mlfourd.ImagingContext.recastImagingContext(niid, class(ic));
+            ic = mlfourd.ImagingContext2(niid);
             ic.save;
         end
     end
