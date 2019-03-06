@@ -133,7 +133,7 @@ classdef SessionData < mlpipeline.SessionData
             g = this.flipAndCropImaging(PETImagingContext(this.oo_fqfn));
         end   
         function loc = petLocation(this, varargin)
-            loc = fullfile(this.vLocation(varargin{:}), 'pet', '');
+            loc = fullfile(this.sessionLocation(varargin{:}), 'pet', '');
         end
         function p = petPointSpread(~)
             p = mlpet.PETRegistry.instance.petPointSpread;
@@ -152,7 +152,6 @@ classdef SessionData < mlpipeline.SessionData
             %         'studyData'   is a mlpipeline.IStudyHandle
             %         'snumber'     is numeric
             %         'tracer'      is char
-            %         'vnumber'     is numeric
             %         'tag'         is appended to the fileprefix
 
  			this = this@mlpipeline.SessionData(varargin{:});

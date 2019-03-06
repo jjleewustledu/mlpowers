@@ -46,7 +46,6 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             for d = 1:length(dth.dns)
                 datobj.sessionFolder = dth.dns{d};
                 for v = ip.Results.vs
-                    datobj.vnumber = v;
                     datobj.hct = hcts(v,d);
                     try
                         pwd1 = pushd(fullfile(dth.dns{d}, sprintf('V%i', v), ''));
@@ -136,8 +135,8 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             try
                 import mlpowers.*;
                 [m,sessd] = FDGKineticsWholebrain.godoMasks(sessd);
-                assert(isdir(sessd.vLocation));
-                pwd0 = pushd(sessd.vLocation);
+                assert(isdir(sessd.sessionPath));
+                pwd0 = pushd(sessd.sessionPath);
                 this = FDGKineticsWholebrain(sessd, 'mask', m);
                 state = this.doItsBayes;
                 popd(pwd0);
@@ -148,10 +147,10 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
         function godoPlots(sessd)
             try
                 import mlpowers.*;
-                assert(isdir(sessd.vLocation));
-                pwd0 = pushd(sessd.vLocation);
+                assert(isdir(sessd.sessionPath));
+                pwd0 = pushd(sessd.sessionPath);
                 this = FDGKineticsWholebrain.load( ...
-                    fullfile(sessd.vLocation, sprintf('mlpowers_FDGKineticsWholebrain_%s', sessd.parcellation)), 'this');
+                    fullfile(sessd.sessionPath, sprintf('mlpowers_FDGKineticsWholebrain_%s', sessd.parcellation)), 'this');
                 this.plot;
                 saveFigures(sprintf('fig_%s_wholebrain', strrep(class(this), '.','_')));
                 popd(pwd0);
@@ -163,8 +162,8 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             assert(isa(sessd, 'mlpowers.SessionData'));
             try
                 import mlpowers.*;
-                assert(isdir(sessd.vLocation));
-                pwd0 = pushd(sessd.vLocation);
+                assert(isdir(sessd.sessionPath));
+                pwd0 = pushd(sessd.sessionPath);
                 [~,msktn] = FDGKineticsWholebrain.mskt(sessd);
                 [~,ct4rb] = FDGKineticsWholebrain.brainmaskBinarized(sessd, msktn);                
                 m = FDGKineticsWholebrain.aparcAsegBinarized(sessd, ct4rb);
