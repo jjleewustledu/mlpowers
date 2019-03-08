@@ -103,7 +103,7 @@ classdef FDGKineticsWholebrain < mlpowers.F18DeoxyGlucoseKinetics
             studyd = StudyDataSingleton.instance('initialize');
             pwd0   = pushd(studyd.subjectsDir);
             iter   = studyd.createIteratorForSessionData;
-            fqfp   = fullfile(pwd0, sprintf('mlpowers_FDGKineticsWholebrain_goWritetable_%s', datestr(now, 30)));
+            fqfp   = fullfile(pwd0, sprintf('mlpowers_FDGKineticsWholebrain_goWritetable_%s', mydatetimestr(now)));
             v      = 0;
             while (iter.hasNext)
                 v = v + 1;
