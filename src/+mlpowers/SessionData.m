@@ -149,7 +149,7 @@ classdef SessionData < mlpipeline.SessionData
             %         'ac'          is logical
             %         'rnumber'     is numeric
             %         'sessionPath' is a path to the session data
-            %         'studyData'   is a mlpipeline.IStudyHandle
+            %         'studyData'   is a mlpipeline.IStudyData
             %         'snumber'     is numeric
             %         'tracer'      is char
             %         'tag'         is appended to the fileprefix
