@@ -36,7 +36,7 @@ classdef SessionData < mlpipeline.SessionData
             [~,this.petTarget_] = fileparts(lower(s));
         end
         function g = get.petBlur(~)
-            g = mlpet.PETRegistry.instance.petPointSpread;
+            g = mlsiemens.ECATRegistry.instance.petPointSpread;
             g = mean(g)*ones(1,3);
         end
         function v = get.v1(this)
@@ -136,7 +136,7 @@ classdef SessionData < mlpipeline.SessionData
             loc = fullfile(this.sessionLocation(varargin{:}), 'pet', '');
         end
         function p = petPointSpread(~)
-            p = mlpet.PETRegistry.instance.petPointSpread;
+            p = mlsiemens.ECATRegistry.instance.petPointSpread;
         end
         function [dt0_,date_] = readDatetime0(~)
             dt0_ = datetime;
