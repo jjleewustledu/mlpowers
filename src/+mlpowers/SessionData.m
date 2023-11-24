@@ -1,4 +1,4 @@
-classdef SessionData < mlpipeline.SessionData
+classdef SessionData < mlpipeline.SessionData2022
 	%% SESSIONDATA  
 
 	%  $Revision$
@@ -149,12 +149,12 @@ classdef SessionData < mlpipeline.SessionData
             %         'ac'          is logical
             %         'rnumber'     is numeric
             %         'sessionPath' is a path to the session data
-            %         'studyData'   is a mlpipeline.IStudyData
+            %         'studyData'   is related to mlnipet.StudyData
             %         'snumber'     is numeric
             %         'tracer'      is char
             %         'tag'         is appended to the fileprefix
 
- 			this = this@mlpipeline.SessionData(varargin{:});
+ 			this = this@mlpipeline.SessionData2022(varargin{:});
             this.attenuationCorrected_ = true;
             
             %% KLUDGE for v1
